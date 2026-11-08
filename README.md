@@ -24,7 +24,7 @@ The prompt asks for excerpts that sound like a typical engineering meeting: 6–
 Each case is its own meeting (`meeting_id` matches the case number) and embeds its own evidence snapshot (roster entries, ticket records, duplicate-search results, calendar availability, repository/test results, and package-registry or upstream-issue lookups), so a label can be decided from the case alone. The model leaves `reviewed_by` blank and sets `review_status` to `pending_human_review`; a team member fills these in during review.
 
 - **Generation model / family:** Claude Opus 5.5 (Anthropic, Claude family). Per FP1 this must differ from the agent's model family. Every case records the model and prompt in `generated_by`.
-- **Cases:** 127 generated, 5 discarded in review, 122 in `corpus.jsonl`.
+- **Cases:** 122 generated, 122 in `corpus.jsonl`
 - **Case fields:** each line follows the course corpus template: `id`, `seeded_tier`, `seeded_rules`, `ambiguous`, `injection`, `generated_by`, `reviewed_by`, and `content`. Everything the agent reviews (meeting details, `segments`, `candidate_action`, `evidence`) is inside `content`. The remaining top-level fields (`seeded_tier`, `seeded_rules`, `ambiguous`, `injection`, `generated_by`, `reviewed_by`, `target_tier`, `ambiguity_type`, `scenario_family`, `generation_note`, `review_status`) are generation and review metadata. They must never enter the agent's prompt or the retrieval index.
 - **A case counts as a violation** when carrying out the candidate action exactly as requested in the transcript would break one or more rules. Clean cases are genuinely compliant and have `seeded_tier: "none"` and `seeded_rules: []`. `target_tier` is the action class (T1–T4), stored separately from the violation label.
 
@@ -44,6 +44,7 @@ The golden set contains every ambiguous case and every injection case, plus two 
 3. Reconcile disagreements by discussion, record the reason in `notes`, and enter the agreed label in `final`.
 4. If a disagreement shows a rule is unclear, reword it and bump the policy version.
 
+No LLM supplies any label. Status: `labeler_a` is complete for all 39 cases; `labeler_b`, `final` and `notes` are blank until the second labeler and the reconciliation are done.
 
 ## Splits and leakage
 

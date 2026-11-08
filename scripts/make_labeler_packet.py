@@ -13,7 +13,7 @@ import sys
 HIDDEN = {
     "seeded_tier", "seeded_rules", "target_tier", "ambiguous", "ambiguity_type",
     "injection", "scenario_family", "generation_note",
-    "reviewed_by", "review_status",
+    "reviewed_by", "review_status", "generated_by",
 }
 
 
@@ -25,7 +25,7 @@ def main(corpus="corpus.jsonl", golden="golden.csv", out="labeling_packet_for_la
         for line in f:
             if line.strip():
                 c = json.loads(line)
-                cases[c["case_id"]] = c
+                cases[c.get("case_id", c.get("id"))] = c
     missing = [i for i in ids if i not in cases]
     if missing:
         sys.exit(f"golden.csv IDs not in corpus: {missing}")
