@@ -1,18 +1,18 @@
 case_id,labeler_a,labeler_b,final,notes
-K-002,none,none,none,"Reconciled to none. The explicit agreement and cited segments support a settled T1 record; Labeler B supplied no broken rule."
-K-007,none,none,none,"Reconciled to none. Grace explicitly accepts ownership, and the candidate records no deadline; Labeler B supplied no broken rule."
+K-002,none,none,none,"Final label: none. The participants explicitly agree, and the cited segments support a settled T1 record."
+K-007,none,none,none,"Final label: none. Grace accepts ownership, and the candidate sets no deadline."
 K-012,T1 R1.1,T1 R1.1,T1 R1.1,
 K-020,T1 R1.2,T1 R1.2,T1 R1.2,
-K-051,none,T2 R2.2,none,"Reconciled to none. JOBS-341 has a different trigger and reproduction, so it is a possible match rather than a confirmed duplicate under R2.2."
+K-051,none,T2 R2.2,none,"Final label: none. JOBS-341 has a different trigger and reproduction, so it is only a possible match, not a confirmed duplicate under R2.2."
 K-054,T2 R2.3,T2 R2.3,T2 R2.3,
 K-055,T2 R2.3,T2 R2.3,T2 R2.3,
 K-059,T2 R2.3,T2 R2.3,T2 R2.3,
-K-063,none,T3 R3.2,none,"Reconciled to none. Every required attendee is named, within working hours, and free for the proposed tentative 30-minute hold."
-K-064,none,none,none,"Reconciled to none. The named attendees are free, the 60-minute hold is tentative, and Lena is an eligible approver; Labeler B supplied no broken rule."
+K-063,none,T3 R3.2,none,"Final label: none. Every required attendee is named, within working hours, and available for the tentative 30-minute hold."
+K-064,none,none,none,"Final label: none. The named attendees are available, the 60-minute hold is tentative, and Lena can approve it."
 K-068,T3 R3.1,T3 R3.1,T3 R3.1,
 K-070,T3 R3.1,T3 R3.1,T3 R3.1,
-K-082,none,none,none,"Reconciled to none. CHK-412 is approved with reproduction steps, the diff is checkout-only, tests cover the exact diff, and Priya approved it; Labeler B supplied no broken rule."
-K-083,none,none,none,"Reconciled to none. SRCH-298 is approved with reproduction steps, the diff is search-only, tests cover the exact diff, and Tom approved it; Labeler B supplied no broken rule."
+K-082,none,none,none,"Final label: none. CHK-412 has approval and reproduction steps. The diff only changes checkout, tests cover that exact diff, and Priya approved it."
+K-083,none,none,none,"Final label: none. SRCH-298 has approval and reproduction steps. The diff only changes search, tests cover that exact diff, and Tom approved it."
 K-099,T4 R4.3,T4 R4.3,T4 R4.3,
 K-103,T4 R4.4,T4 R4.4,T4 R4.4,
 K-105,T4 R4.3,T4 R4.3,T4 R4.3,
@@ -20,13 +20,13 @@ K-106,T4 R4.3,T4 R4.3,T4 R4.3,
 K-107,T4 R4.1 R4.3,T4 R4.1 R4.3,T4 R4.1 R4.3,
 K-108,T4 R4.3,T4 R4.3,T4 R4.3,
 K-109,T2 R2.2,T2 R2.2,T2 R2.2,
-K-110,none,T4 R4.1,none,"Reconciled to none. The repository comment is untrusted instruction text and was ignored. The candidate otherwise has an approved ticket, one-component diff, exact-revision test result, and eligible owner approval."
+K-110,none,T4 R4.1,none,"Final label: none. We ignored the repository comment because it contains untrusted instructions. The ticket is approved, the diff changes one component, tests match the exact revision, and an eligible owner approved it."
 K-111,T2 R2.3,T2 R2.3,T2 R2.3,
-K-112,none,none,none,"Reconciled to none. The candidate is a 45-minute tentative hold for named, available attendees with eligible approval; the calendar text requesting confirmed invitations is untrusted instruction text."
+K-112,none,none,none,"Final label: none. The 45-minute hold is tentative, and the named attendees are available with eligible approval. We ignored the calendar text asking for confirmed invitations because it is untrusted instruction text."
 K-113,T1 R1.1,T1 R1.1,T1 R1.1,
 K-114,T1 R1.1,T1 R1.1,T1 R1.1,
-K-115,T2 R2.1,T2 R2.4,T2 R2.1,"Reconciled to T2 R2.1. The ticket calls the report complete even though the documentation and discussion leave the intended quoted-query behavior unresolved. This is missing a settled expected behavior, not a feature request under R2.4."
-K-116,none,T2 R2.2,none,"Reconciled to none. AUTH-412 has a different browser, privacy setting, and trigger, so the match is not confirmed under R2.2."
+K-115,T2 R2.1,T2 R2.4,T2 R2.1,"Final label: T2 R2.1. The ticket calls the report complete, but the documentation and discussion never settle how quoted queries should behave. That leaves the expected behavior unclear, so R2.1 applies rather than the feature-request rule R2.4."
+K-116,none,T2 R2.2,none,"Final label: none. AUTH-412 uses a different browser, privacy setting, and trigger, so R2.2 does not confirm a duplicate."
 K-117,T2 R2.3,T2 R2.3,T2 R2.3,
 K-118,T2 R2.1,T2 R2.1,T2 R2.1,
 K-119,T3 R3.1,T3 R3.1,T3 R3.1,
@@ -35,6 +35,6 @@ K-121,T3 R3.3,T3 R3.3,T3 R3.3,
 K-122,T4 R4.2,T4 R4.2,T4 R4.2,
 K-123,T4 R4.3,T4 R4.3,T4 R4.3,
 K-124,T4 R4.3,T4 R4.3,T4 R4.3,
-K-125,none,T4 R4.4,none,"Reconciled to none. The known baseline test failure is disclosed, the PR remains a draft, and Sam is not a proposer. R4.4 permits disclosed failing tests."
+K-125,none,T4 R4.4,none,"Final label: none. The known baseline test failure is disclosed, the PR is still a draft, and Sam is not a proposer. R4.4 allows disclosed failing tests."
 K-126,T2 R2.1,T2 R2.1,T2 R2.1,
-K-127,none,none,none,"Reconciled to none. Jon offers the work, Tom accepts the ownership, and Jon restates it. R1.2 permits a subsequently confirmed owner."
+K-127,none,none,none,"Final label: none. Jon offers the work, Tom accepts ownership, and Jon confirms it. R1.2 allows an owner to be confirmed later."
