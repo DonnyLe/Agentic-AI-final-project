@@ -18,19 +18,38 @@ import sys
 from collections import Counter
 
 TIERS = {"T1", "T2", "T3", "T4"}
+SEEDED_TIERS = TIERS | {"none"}
 RULES = {"R1.1", "R1.2", "R1.3", "R2.1", "R2.2", "R2.3", "R2.4",
          "R3.1", "R3.2", "R3.3", "R4.1", "R4.2", "R4.3", "R4.4"}
-REQUIRED = ["case_id", "meeting_id", "segments", "candidate_action", "evidence",
-            "target_tier", "seeded_tier", "seeded_rules", "ambiguous",
-            "ambiguity_type", "injection", "scenario_family", "reviewed_by",
+REQUIRED = ["id", "seeded_tier", "seeded_rules", "ambiguous", "injection",
+            "generated_by", "reviewed_by", "content", "target_tier",
+            "ambiguity_type", "scenario_family", "generation_note",
             "review_status"]
+CONTENT_REQUIRED = ["meeting_id", "segments", "candidate_action", "evidence"]
 HIDDEN = {"seeded_tier", "seeded_rules", "target_tier", "ambiguous",
-          "ambiguity_type", "injection", "scenario_family", "generation_note"}
-LABEL_RE = re.compile(r"^(none|T[1-4] R\d\.\d(, ?R\d\.\d)*)$")
+          "ambiguity_type", "injection", "scenario_family", "generation_note",
+          "generated_by", "reviewed_by", "review_status"}
+LABEL_RE = re.compile(r"^(none|T[1-4]( R\d\.\d)+)$")
 
 errors, warns = [], []
 err = errors.append
 warn = warns.append
+
+
+def normalize(label):
+    """Sort the rule IDs so 'T4 R4.3 R4.1' and 'T4 R4.1 R4.3' compare equal."""
+    tier, *rules = label.split()
+    return " ".join([tier] + sorted(rules))
+
+
+def cohen_kappa(a, b):
+    n = len(a)
+    observed = sum(x == y for x, y in zip(a, b)) / n
+    ca, cb = Counter(a), Counter(b)
+    expected = sum(ca[k] * cb[k] for k in ca) / (n * n)
+    if expected == 1:
+        return 1.0
+    return (observed - expected) / (1 - expected)
 
 
 def check(d):
@@ -54,14 +73,24 @@ def check(d):
     by_id = {}
     seg_ids = Counter()
     for c in cases:
-        cid = c.get("case_id", "?")
+        cid = c.get("id", "?")
         for k in REQUIRED:
             if k not in c:
                 err(f"{cid}: missing field {k}")
+        content = c.get("content")
+        if not isinstance(content, dict):
+            err(f"{cid}: content is not an object")
+            content = {}
+        for k in CONTENT_REQUIRED:
+            if k not in content:
+                err(f"{cid}: missing content.{k}")
+        leak = HIDDEN & set(content)
+        if leak:
+            err(f"{cid}: content contains hidden metadata {sorted(leak)}")
         if cid in by_id:
-            err(f"duplicate case_id {cid}")
+            err(f"duplicate id {cid}")
         by_id[cid] = c
-        if c.get("seeded_tier") not in TIERS:
+        if c.get("seeded_tier") not in SEEDED_TIERS:
             err(f"{cid}: bad seeded_tier {c.get('seeded_tier')}")
         if c.get("target_tier") not in TIERS:
             err(f"{cid}: bad target_tier {c.get('target_tier')}")
@@ -70,9 +99,9 @@ def check(d):
             err(f"{cid}: unknown rule IDs {bad}")
         if c.get("ambiguous") and not c.get("ambiguity_type"):
             warn(f"{cid}: ambiguous but no ambiguity_type")
-        if not c.get("segments"):
+        if not content.get("segments"):
             err(f"{cid}: no transcript segments")
-        for s in c.get("segments", []):
+        for s in content.get("segments", []):
             seg_ids[s.get("segment_id")] += 1
         if not c.get("reviewed_by") or c.get("review_status") == "pending_human_review":
             warn(f"{cid}: not yet human-reviewed")
@@ -82,8 +111,8 @@ def check(d):
 
     tiers = Counter(c.get("seeded_tier") for c in cases)
     viol = sum(1 for c in cases if c.get("seeded_rules"))
-    amb = {c["case_id"] for c in cases if c.get("ambiguous")}
-    inj = {c["case_id"] for c in cases if c.get("injection")}
+    amb = {c.get("id") for c in cases if c.get("ambiguous")}
+    inj = {c.get("id") for c in cases if c.get("injection")}
     print(f"cases: {n}")
     print(f"tiers: {dict(sorted(tiers.items()))}")
     print(f"violating: {viol} ({viol / max(n, 1):.1%})  clean: {n - viol}")
@@ -91,7 +120,7 @@ def check(d):
     print(f"scenario families: {len({c.get('scenario_family') for c in cases})}")
     if n < 100:
         err(f"only {n} cases (<100)")
-    if set(tiers) != TIERS:
+    if not TIERS <= set(tiers):
         err(f"tiers missing: {TIERS - set(tiers)}")
     if viol / max(n, 1) < 0.15:
         err("violations <15%")
@@ -116,22 +145,25 @@ def check(d):
             err(f"golden ID {g} not in corpus")
     for g in sorted((amb | inj) - set(gids)):
         err(f"ambiguous/injection case {g} missing from golden set")
-    agree = labeled = 0
+    pairs = []
     for r in rows:
         for col in ("labeler_a", "labeler_b", "final"):
             v = (r.get(col) or "").strip()
             if not v:
                 warn(f"golden {r['case_id']}: {col} empty")
             elif not LABEL_RE.match(v):
-                err(f"golden {r['case_id']}: {col}={v!r} not 'none' or 'T<n> R<x.y>[, R<x.y>]'")
+                err(f"golden {r['case_id']}: {col}={v!r} not 'none' or 'T<n> R<x.y>[ R<x.y>]'")
         a, b = (r.get("labeler_a") or "").strip(), (r.get("labeler_b") or "").strip()
-        if a and b:
-            labeled += 1
-            agree += a == b
+        if LABEL_RE.match(a) and LABEL_RE.match(b):
+            a, b = normalize(a), normalize(b)
+            pairs.append((a, b))
             if a != b and not (r.get("notes") or "").strip():
                 warn(f"golden {r['case_id']}: labelers disagree but notes empty")
-    if labeled:
-        print(f"labeler raw agreement: {agree}/{labeled} ({agree / labeled:.1%})")
+    if pairs:
+        la, lb = zip(*pairs)
+        agree = sum(x == y for x, y in pairs)
+        print(f"labeler agreement: {agree}/{len(pairs)} ({agree / len(pairs):.1%})  "
+              f"Cohen's kappa: {cohen_kappa(la, lb):.3f}")
 
     pk = path("labeling_packet_for_labelers.jsonl")
     if os.path.exists(pk):
@@ -139,9 +171,13 @@ def check(d):
             for line in f:
                 if line.strip():
                     p = json.loads(line)
-                    leak = HIDDEN & set(p)
+                    pid = p.get("id", "?")
+                    extra = set(p) - {"id", "content"}
+                    if extra:
+                        err(f"labeler packet {pid} has fields other than id/content: {sorted(extra)}")
+                    leak = HIDDEN & set(p.get("content") or {})
                     if leak:
-                        err(f"labeler packet {p.get('case_id')} leaks {sorted(leak)}")
+                        err(f"labeler packet {pid} content leaks {sorted(leak)}")
 
     with open(path("README.md")) as f:
         if "TEAM TO COMPLETE" in f.read():

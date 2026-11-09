@@ -2,22 +2,17 @@
 
 Usage: python3 scripts/make_labeler_packet.py [corpus.jsonl] [golden.csv] [out.jsonl]
 
-Removes every generation-metadata field listed in README "Golden set" step 1,
-plus review bookkeeping, so labelers see only the meeting, the candidate
-action, and the evidence snapshot.
+Keeps only `id` and `content` for each golden case (README "Golden set" step 1),
+so labelers see only the meeting, the candidate action, and the evidence
+snapshot. Generation metadata and review bookkeeping are dropped.
 """
+import argparse
 import csv
 import json
 import sys
 
-HIDDEN = {
-    "seeded_tier", "seeded_rules", "target_tier", "ambiguous", "ambiguity_type",
-    "injection", "scenario_family", "generation_note",
-    "reviewed_by", "review_status", "generated_by",
-}
 
-
-def main(corpus="corpus.jsonl", golden="golden.csv", out="labeling_packet_for_labelers.jsonl"):
+def main(corpus, golden, out):
     with open(golden, newline="") as f:
         ids = [row["case_id"] for row in csv.DictReader(f)]
     cases = {}
@@ -25,16 +20,24 @@ def main(corpus="corpus.jsonl", golden="golden.csv", out="labeling_packet_for_la
         for line in f:
             if line.strip():
                 c = json.loads(line)
-                cases[c.get("case_id", c.get("id"))] = c
+                cases[c["id"]] = c
     missing = [i for i in ids if i not in cases]
     if missing:
         sys.exit(f"golden.csv IDs not in corpus: {missing}")
+    no_content = [i for i in ids if "content" not in cases[i]]
+    if no_content:
+        sys.exit(f"golden cases with no content: {no_content}")
     with open(out, "w") as f:
         for i in ids:
-            blind = {k: v for k, v in cases[i].items() if k not in HIDDEN}
+            blind = {"id": i, "content": cases[i]["content"]}
             f.write(json.dumps(blind, ensure_ascii=False) + "\n")
     print(f"wrote {len(ids)} blind cases to {out}")
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:])
+    parser = argparse.ArgumentParser(description="Build the labelers' blind packet of golden-set cases.")
+    parser.add_argument("corpus", nargs="?", default="corpus.jsonl")
+    parser.add_argument("golden", nargs="?", default="golden.csv")
+    parser.add_argument("out", nargs="?", default="labeling_packet_for_labelers.jsonl")
+    args = parser.parse_args()
+    main(args.corpus, args.golden, args.out)
