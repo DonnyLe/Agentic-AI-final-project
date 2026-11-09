@@ -18,8 +18,9 @@ Usage:
 
 Review keys: K keep, C correct, D discard, N notes, left/right previous/next,
 P policy panel, Esc leave a text field.
-Label keys: type the label (or click chips), Enter saves and moves on,
-up/down previous/next.
+Label mode has a rules panel on the right: pick the tier, tick the broken
+rules, Enter saves and moves on. Keys: 0 no rule broken, 1-4 tier,
+left/right previous/next.
 """
 import argparse
 import csv
@@ -44,6 +45,7 @@ EDITABLE = ["reviewer", DECISION, "corrected_label", "review_notes"]
 DECISIONS = {"keep", "correct", "discard"}
 LABEL_RE = re.compile(r"^(none|T[1-4]( R\d\.\d)+)$")
 RULE_RE = re.compile(r"^\*\*(R\d\.\d) · (.+?)\.\*\* (.+)$")
+TIER_RE = re.compile(r"^\| (T[1-4]) \| (.+?) \| (.+?) \| (.+?) \| (.+?) \|$")
 
 lock = threading.Lock()
 settings = {"mode": "review", "column": None, "include_golden": False}
@@ -106,7 +108,18 @@ def load_label_data():
     items = [{"row": {"case_id": r["case_id"], "label": r[col]},
               "case": {"id": r["case_id"], "content": packet[r["case_id"]]["content"]}}
              for r in rows if r["case_id"] in packet]
-    return {"items": items, "rules": load_rules(), "column": col}
+    return {"items": items, "rules": load_rules(), "tiers": load_tiers(), "column": col}
+
+
+def load_tiers():
+    tiers = []
+    with open(POLICY) as f:
+        for line in f:
+            m = TIER_RE.match(line.strip())
+            if m:
+                tiers.append({"id": m[1], "name": m[2], "evidence": m[3],
+                              "action": m[4], "approval": m[5]})
+    return tiers
 
 
 def save_label(update):
@@ -264,6 +277,29 @@ aside.open { transform: none; }
 aside .rule { margin-bottom: 10px; }
 aside .rule b { font-family: ui-monospace, monospace; }
 body.label .review-only { display: none; }
+body.label .bar { display: none; }
+body.label .layout { grid-template-columns: 200px 1fr 420px; }
+body.label main { padding-bottom: 24px; }
+.side { display: none; }
+body.label .side { display: block; overflow-y: auto; border-left: 1px solid var(--line); background: var(--panel); }
+.side .head { position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 14px; z-index: 1; }
+.side .head .row { display: flex; gap: 8px; align-items: center; }
+.side .preview { font-family: ui-monospace, monospace; font-weight: 700; font-size: 16px; flex: 1; }
+.side .preview.bad { color: var(--muted); font-weight: 400; font-size: 13px; }
+.side .save { background: var(--keep); color: #fff; border-color: var(--keep); font-weight: 600; }
+.side .save:disabled { opacity: .4; cursor: default; }
+.side .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.side .group { padding: 8px 14px 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.opt { display: grid; grid-template-columns: 20px 1fr; gap: 6px; margin: 4px 10px; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.opt:hover { border-color: var(--accent); }
+.opt.on { border-color: var(--correct); background: var(--hl); }
+.opt input { margin-top: 3px; }
+.opt .t { font-weight: 600; }
+.opt .t code { font-family: ui-monospace, monospace; margin-right: 6px; }
+.opt .d { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.opt.on .d { color: var(--ink); }
+.opt kbd { float: right; }
 </style>
 </head>
 <body>
@@ -272,7 +308,7 @@ body.label .review-only { display: none; }
   <span id="count"></span>
   <div class="progress"><div id="prog"></div></div>
   <label class="review-only">Reviewer <input id="reviewer" size="16"></label>
-  <button id="policyBtn">Policy <kbd>P</kbd></button>
+  <button id="policyBtn" class="review-only">Policy <kbd>P</kbd></button>
 </header>
 <div class="layout">
   <nav>
@@ -290,6 +326,7 @@ body.label .review-only { display: none; }
     <div id="list"></div>
   </nav>
   <main id="main"></main>
+  <section class="side" id="side"></section>
 </div>
 <div class="bar">
   <div class="row">
@@ -315,7 +352,8 @@ const CFG = __CONFIG__;
 const LABEL = CFG.mode === "label";
 const DEC = "decision(keep/correct/discard)";
 const LABEL_RE = /^(none|T[1-4]( R\d\.\d)+)$/;
-let items = [], rules = [], view = [], cur = 0, pending = null;
+let items = [], rules = [], tiers = [], view = [], cur = 0, pending = null;
+let sel = { tier: "", rules: new Set() };   // label mode selection
 const $ = id => document.getElementById(id);
 
 function el(tag, attrs, ...kids) {
@@ -437,10 +475,9 @@ function syncBar() {
   const it = view[cur];
   const r = it ? it.row : {};
   if (LABEL) {
-    $("chips").classList.add("show");
-    $("label").value = r.label || "";
-    syncChips();
-    $("label").focus();
+    const parts = (r.label || "").split(" ").filter(Boolean);
+    sel = { tier: parts[0] || "", rules: new Set(parts.slice(1)) };
+    renderSide();
     return;
   }
   const d = pending || r[DEC] || "";
@@ -474,9 +511,64 @@ function syncChips() {
 
 function status(msg, err) { const s = $("status"); s.textContent = msg; s.classList.toggle("err", !!err); }
 
+function selLabel() {
+  if (sel.tier === "none") return "none";
+  return sel.tier ? [sel.tier, ...[...sel.rules].sort()].join(" ") : "";
+}
+
+function pickTier(t) {
+  sel.tier = t;
+  if (t === "none") sel.rules.clear();
+  renderSide();
+}
+
+function toggleRule(id) {
+  sel.rules.has(id) ? sel.rules.delete(id) : sel.rules.add(id);
+  if ((!sel.tier || sel.tier === "none") && sel.rules.size) sel.tier = "T" + id[1];
+  renderSide();
+}
+
+function option(on, type, key, title, desc, onclick) {
+  const input = el("input", { type, tabindex: "-1" });
+  input.checked = on;
+  return el("div", { class: "opt" + (on ? " on" : ""), onclick },
+    input, el("div", {}, el("div", { class: "t" }, key ? el("kbd", {}, key) : null, ...title), el("div", { class: "d" }, desc)));
+}
+
+function renderSide() {
+  const it = view[cur];
+  const side = $("side");
+  if (!it) { side.replaceChildren(); return; }
+  const label = selLabel();
+  const ok = LABEL_RE.test(label);
+  let hint = "Pick the tier of the candidate action, then tick every rule it breaks. Enter saves.";
+  if (sel.tier && sel.tier !== "none" && !sel.rules.size) hint = "Tick at least one broken rule, or choose No rule broken.";
+  const saved = it.row.label && it.row.label === label;
+  const head = el("div", { class: "head" },
+    el("div", { class: "row" },
+      el("span", { class: "preview" + (label ? "" : " bad") }, label || "no label yet"),
+      el("button", { onclick: () => move(-1), title: "Previous (←)" }, "←"),
+      el("button", { onclick: () => move(1), title: "Next (→)" }, "→"),
+      Object.assign(el("button", { class: "save", onclick: saveLabel }, saved ? "Saved ✓" : "Save ⏎"), { disabled: !ok })),
+    el("div", { class: "hint" }, hint));
+  const byTier = t => rules.filter(r => r.id[1] === t.id[1]);
+  side.replaceChildren(...[head,
+    el("div", { class: "group" }, "Compliant"),
+    option(sel.tier === "none", "radio", "0", ["No rule broken"],
+      "Carrying out the candidate action exactly as written breaks none of the rules below. Label: none.",
+      () => pickTier("none")),
+    el("div", { class: "group" }, "Tier of the candidate action"),
+    tiers.map((t, i) => option(sel.tier === t.id, "radio", String(i + 1), [el("code", {}, t.id), t.name],
+      `${t.action}. Evidence: ${t.evidence}. Approval: ${t.approval}.`, () => pickTier(t.id))),
+    tiers.map(t => [
+      el("div", { class: "group" }, `Broken rules · ${t.id} ${t.name}`),
+      byTier(t).map(r => option(sel.rules.has(r.id), "checkbox", "", [el("code", {}, r.id), r.title],
+        r.text, () => toggleRule(r.id)))])].flat(Infinity));
+}
+
 async function saveLabel() {
   const it = view[cur]; if (!it) return;
-  const label = $("label").value.trim().replace(/\s+/g, " ");
+  const label = selLabel();
   if (!LABEL_RE.test(label)) { status("Label must be 'none' or 'T<n> R<x.y>[ R<x.y>]'.", true); return; }
   const res = await fetch("/api/save", { method: "POST", body: JSON.stringify({ case_id: it.row.case_id, label }) });
   const out = await res.json();
@@ -542,7 +634,14 @@ document.addEventListener("keydown", e => {
   }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key.toLowerCase();
-  if (LABEL && ["k", "c", "d", "n"].includes(k)) { $("label").focus(); return; }
+  if (LABEL) {
+    if (e.key === "Enter") { e.preventDefault(); saveLabel(); }
+    else if (k === "0") pickTier("none");
+    else if (["1", "2", "3", "4"].includes(k)) pickTier("T" + k);
+    else if (e.key === "ArrowRight") { e.preventDefault(); move(1); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); move(-1); }
+    return;
+  }
   if (k === "k") decide("keep");
   else if (k === "c") decide("correct");
   else if (k === "d") { pending = "discard"; syncBar(); $("notes").focus(); status("Write why, then Cmd/Ctrl+Enter to discard."); }
@@ -556,7 +655,7 @@ document.addEventListener("keydown", e => {
 
 (async () => {
   const data = await (await fetch("/api/data")).json();
-  items = data.items; rules = data.rules;
+  items = data.items; rules = data.rules; tiers = data.tiers || [];
   if (LABEL) {
     document.body.classList.add("label");
     document.querySelector("header h1").textContent = "Blind labeling";
@@ -569,7 +668,7 @@ document.addEventListener("keydown", e => {
   let saved = ""; try { saved = localStorage.getItem("reviewer") || ""; } catch (e) {}
   $("reviewer").value = saved || data.user || "";
   $("policy").replaceChildren(el("h3", {}, "Policy rules"),
-    rules.map(x => el("div", { class: "rule" }, el("b", {}, x.id), " ", el("strong", {}, x.title + ". "), x.text)));
+    ...rules.map(x => el("div", { class: "rule" }, el("b", {}, x.id), " ", el("strong", {}, x.title + ". "), x.text)));
   rebuild();
 })();
 </script>

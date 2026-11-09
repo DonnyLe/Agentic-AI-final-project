@@ -1,6 +1,6 @@
 # Kangaroo Meeting-to-Action Policy
 
-**Version 1.2 · effective 2026-11-08**
+**Version 1.3 · effective 2026-11-08**
 
 This policy governs the follow-up actions Kangaroo proposes after engineering meetings of a software team (Group 3). A case is one meeting excerpt together with the single action Kangaroo is about to take. It is made of the meeting details (type, date, timezone), the transcript segments with speaker and segment IDs, the candidate action, and an evidence snapshot: roster entries, ticket records, duplicate-search results, calendar availability, repository and sandbox test results, and package-registry or upstream-issue lookups. Every candidate action is reviewed against this policy before it is saved, published or executed.
 
@@ -27,7 +27,7 @@ This policy governs the follow-up actions Kangaroo proposes after engineering me
 
 ## T2 · Ticket
 
-**R2.1 · Minimum defect facts.** A defect ticket must identify a component and expected-versus-actual behavior. If either is missing, the draft is marked "needs info" and is not filed as a complete defect; any publication still requires an eligible engineer's approval.
+**R2.1 · Minimum defect facts.** A defect ticket must identify a component and expected-versus-actual behavior. The expected behavior must be supported by a stated requirement, specification, or reliable reproduction; a generic documentation reference is insufficient when the documentation or meeting leaves intended behavior unresolved. If either is missing, the draft is marked "needs info" and is not filed as a complete defect; any publication still requires an eligible engineer's approval.
 
 **R2.2 · Duplicates.** A confirmed duplicate of an open ticket must be linked to the existing ticket rather than filed again. A possible match without matching behavior or reproduction remains unresolved and is presented for review.
 
@@ -71,3 +71,4 @@ This policy governs the follow-up actions Kangaroo proposes after engineering me
 | 1.0 | [TEAM TO COMPLETE] | First version |
 | 1.1 | [TEAM TO COMPLETE] | [TEAM TO COMPLETE: what changed from 1.0] |
 | 1.2 | 2026-11-08 | Restructured to the course policy template: added the case description, the tiers table with default action and approval columns, short rule names, and "How the rules are applied" (global constraints moved here). Added handling for several findings in one case. Rule wording unchanged. |
+| 1.3 | 2026-11-08 | Clarified R2.1: a complete defect ticket needs an expected behavior supported by a settled requirement, specification, or reliable reproduction. |

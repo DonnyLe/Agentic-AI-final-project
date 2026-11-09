@@ -1,59 +1,63 @@
-# FP2 To-Do
+# FP2 submission checklist
 
-Checked against the current files on 2026-11-08.
+Checked against the current files and the assignment instructions on 2026-11-08.
 
-## 1. Fix the scripts
+## Completed in the current files
 
-### `scripts/check_corpus.py`: crashes on the current corpus
-- [ ] It still expects the old field names. Running it gives `KeyError: 'case_id'` (line 85) because the corpus now uses the course template (`id` + `content`).
-  - Read `id` instead of `case_id`.
-  - `meeting_id`, `segments`, `candidate_action` and `evidence` are now inside `content`, so look them up there.
-  - Update `REQUIRED` to match the template: `id, seeded_tier, seeded_rules, ambiguous, injection, generated_by, reviewed_by, content`, plus our extra metadata (`target_tier, ambiguity_type, scenario_family, generation_note, review_status`).
-- [ ] Fix the label format. `LABEL_RE` accepts comma-separated rules (`T4 R4.1, R4.3`), but the course README and our README use spaces (`T4 R4.1 R4.3`). Change it to `^(none|T[1-4]( R\d\.\d)+)$`, and change the error message on line 67 to match.
-- [ ] Add `generated_by`, `reviewed_by` and `review_status` to its `HIDDEN` set so the packet leak check matches `make_labeler_packet.py`, which now strips them.
-- [ ] Check that `content` contains none of the hidden metadata (this is what keeps labels out of the agent's prompt).
-- [ ] Optional: compute labeler A/B percent agreement and Cohen's kappa from `golden.csv` once both columns are filled (the README needs these numbers).
-- [ ] Run it, fix any real errors, and paste the output into the README "Validation" section, which currently says `[TEAM TO COMPLETE]`.
+- [x] Corpus contains 122 cases, including 88 violating cases (72.1%), all four tiers, 15 ambiguous cases, and 8 injection cases.
+- [x] Every corpus case has `reviewed_by` filled in and `review_status: "reviewed"`.
+- [x] Golden set contains 39 cases, including every ambiguous and injection case.
+- [x] Both labeler columns and final labels are filled for all 39 golden cases.
+- [x] Blind labeling packet contains only `id` and `content` fields.
+- [x] Policy contains 14 rules across four tiers and is version 1.3.
+- [x] Internal checker supports the current corpus schema and space-separated labels.
+- [x] `scripts/make_labeler_packet.py` supports argparse and `--help`.
+- [x] `python3 scripts/check_corpus.py` returns PASS.
+- [x] `python3 scripts/check_file.py` reports that all corpus minimums are met and no cases lack a reviewer.
 
-### `scripts/make_labeler_packet.py`
-- [ ] Rerun it once the corpus is final (after review corrections) so `labeling_packet_for_labelers.jsonl` matches `corpus.jsonl`. Check that each packet line holds only `id` and `content`.
-- [ ] Small fix: it treats `--help` as a file path. Add a usage message or argparse.
+These checks verify recorded completion and file structure. The team must confirm that the required human review and independent labeling actually happened.
 
-### Course check script
-- [ ] Rerun the snippet from `README_Corpus.md` (in `templates/*.zip`) after review. `not reviewed` must be 0.
+## 1. Finish human review documentation
 
-## 2. Review all 122 cases (required before submission)
-- [ ] Split the 122 cases among team members and review each one in `working/review_sheet.csv`. Fill in `reviewer`, `decision(keep/correct/discard)`, `corrected_label` and `review_notes`.
-- [ ] Look closely at rows that have `audit_flags` set (doubts the generator reported).
-- [ ] Apply the decisions to `corpus.jsonl`:
-  - Fill in `reviewed_by` and set `review_status` to reviewed on every kept case.
-  - Correct `seeded_tier`/`seeded_rules` where the reviewer changed the label.
-  - Remove discarded cases.
-- [ ] Make sure the corpus still meets the minimums after discards: ≥100 cases, ≥15% violating, all four tiers, ≥5 ambiguous, ≥2 injection. If not, generate replacement cases with `prompts/generate_cases.txt` and add their settings to `prompts/case_settings.jsonl`.
-- [ ] If a discarded case is in the golden set, replace it in `golden.csv` (it still has to contain every ambiguous and injection case).
-- [ ] README "Review" section: fill in the discarded cases, rejection rate and reviewers, and change Status from **pending**.
+- [ ] Confirm that every case was reviewed by hand and every golden case was labeled independently by two team members using only the policy and blind case content, without seeded labels or each other's labels.
+- [ ] Replace the generic reconciliation notes for K-051, K-063, K-110, K-115, K-116, and K-125 in `golden.csv` with the team's actual reasons. Each note should identify the decisive evidence and policy interpretation; "Reconciled to none" records an outcome but not a reason.
+- [ ] If those discussions require a policy change, update its version and change log, then revisit affected cases and labels.
 
-## 3. Label the golden set (39 cases)
-- [ ] Labeler A labels the regenerated cases from `labeling_packet_for_labelers.jsonl` → `labeler_a` column. Format: `none` or `T<n> R<x.y>[ R<x.y>]`.
-- [ ] Labeler B labels the same packet independently → `labeler_b`. **Do not open `working/labeler_a_v1_old_cases.csv`, `prompts/case_settings.jsonl`, `corpus.jsonl` or the review sheet first.**
-- [ ] Settle disagreements by discussion: write the agreed label in `final` and the reason in `notes`.
-- [ ] If a disagreement shows a rule is unclear, reword it in `policy.md`, bump the version (→ 1.3) and add a change log row.
-- [ ] Compute percent agreement and Cohen's kappa and add them to the README "Validation" section.
-- [ ] Where `final` differs from the seeded label, note it. The golden label is what the evaluation uses, per the course README.
+## 2. Finish policy history
 
-## 4. Update `policy.md` with the changes since FP1
-- [ ] Fill in the change log rows for 1.0 and 1.1 (dates, and what changed from 1.0 to 1.1). Both still say `[TEAM TO COMPLETE]`. Get these from the FP1 submission or its feedback.
-- [ ] Check that every change since FP1 is listed. Possible ones: rules reworded after FP1 feedback, the multi-finding rule ("Several findings in one case"), global constraints moved into "How the rules are applied".
-- [ ] Check `policy.md` against `FP2_policy_template.md` (in `templates/*.zip`) for missing sections.
-- [ ] If the policy changes after the cases were generated, check whether any cases or labels depend on the changed wording.
+- [ ] Replace the `[TEAM TO COMPLETE]` placeholders in the version 1.0 and 1.1 change log rows in `policy.md` with real dates and changes from the team's records.
+- [ ] Check that the report's description of changes since FP1 matches the completed change log.
 
-## 5. Finish the README
-- [ ] Replace every `[TEAM TO COMPLETE]` (Review, Validation, kappa).
-- [ ] Update the validation counts if review changes the corpus.
-- [ ] Update "Cases: 122 generated, 122 in `corpus.jsonl`" and the unused-ID list after discards.
-- [ ] Mention `working/labeler_a_v1_old_cases.csv` and `prompts/case_settings.jsonl` in the Files table, or move them out of the submission.
+## 3. Finish the architecture report
 
-## 6. Before submitting
-- [ ] Decide which `working/` files to submit. `golden_ai_review_SEALED.md` and `golden_reveal_AFTER_LABELING.csv` are deleted in the working tree but still in git history. Make sure nothing AI-labeled gets submitted, since the README says no LLM supplies any label.
-- [ ] Commit the current regeneration work. Commit `6da9b1c` is just "tmp", and many files have uncommitted changes.
-- [ ] Final run of both checkers with no errors.
+- [ ] Update policy references from v1.2 to v1.3, including Appendix A, and describe the R2.1 clarification about evidence for expected behavior.
+- [ ] Include the actual architecture diagram in the PDF, not just its caption or an editable-diagram link. Show agents, MCP/tools, external sources, precedent retrieval, persistence, the reviewer interface, approval boundaries, and enforcement actions.
+- [ ] Explicitly state that no third-party MCP services are planned for the core prototype, if that remains the plan.
+- [ ] Clarify that the Supervisor alone adjudicates policy while specialists receive relevant clauses. Remove the conflicting claim that it is the only agent that reads policy.
+- [ ] Replace the claim that hidden instructions have "no way" to reach the Action Agent with a narrower explanation: restricted inputs, tool permissions, and backend approval checks reduce the risk, but upstream proposals can still be influenced by untrusted content.
+- [ ] Check the full assignment template for section 9 or any other reporting fields missing from the pasted report, which ends at section 6 before the appendix.
+- [ ] Add corpus counts and agreement results wherever the assignment requests them: 33/39 exact-label agreement (84.6%) and Cohen's kappa 0.826. Recompute if labels change.
+- [ ] Remove assignment prompts, placeholders, and editing notes from the final report.
+
+The pasted instructions require an architecture design, policy, corpus, and golden set, not a completed agent implementation. The separate precedent history is part of the proposed architecture; those instructions do not explicitly require submitting it as an extra file.
+
+## 4. Finish the README
+
+- [ ] Add exact-label agreement (33/39, 84.6%) and Cohen's kappa (0.826) to the Validation section, updating them if labels change.
+- [ ] Keep generation, review, discard counts, policy version, and labeling claims consistent with what the team actually did.
+- [ ] Make the Files table match the ZIP contents, or clearly distinguish submission files from repository-only helpers. Include the generation prompt if retaining its reference as a supplied file.
+
+## 5. Validate and submit
+
+- [ ] Rerun `python3 scripts/check_corpus.py` and `python3 scripts/check_file.py` after the final edits.
+- [ ] The supplied `README_Corpus.md` contains one checking snippet, reproduced in `scripts/check_file.py`; the assignment mentions two. Check whether the course provides a separate agreement checker elsewhere. The internal checker already computes agreement, but is not an official course checker.
+- [ ] Export the architecture report as a well-formatted PDF. Suggested filename: `Group3_FP2_Architecture.pdf`.
+- [ ] Inspect the exported PDF for diagram readability, table wrapping, page breaks, and leftover prompts or placeholders.
+- [ ] Create `Group3_FP2_corpus.zip` containing these required files at its root:
+  - `policy.md`
+  - `corpus.jsonl`
+  - `golden.csv`
+  - `README.md`
+- [ ] Recommended: also include `prompts/generate_cases.txt`, since the README describes it as the generation prompt.
+- [ ] Inspect the ZIP contents. Do not include `.git/`, old labels, `working/`, templates, or unrelated repository files.
+- [ ] Submit the architecture PDF and corpus ZIP through the course's submission interface.

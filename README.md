@@ -4,7 +4,7 @@
 
 | File | Contents |
 |------|----------|
-| `policy.md` | Meeting-to-Action Policy v1.2 (14 rules, 4 tiers) |
+| `policy.md` | Meeting-to-Action Policy v1.3 (14 rules, 4 tiers) |
 | `corpus.jsonl` | Generated cases, one JSON object per line (course corpus template format) |
 | `prompts/generate_cases.txt` | Prompt used to generate the cases from the policy |
 | `golden.csv` | Golden-set case IDs with columns `labeler_a`, `labeler_b`, `final`, `notes` |
@@ -32,8 +32,8 @@ Each case is its own meeting (`meeting_id` matches the case number) and embeds i
 
 Every case must be reviewed by a team member, who then corrects or discards it.
 
-- Cases discarded: 5. Rejection rate: 3.9%.
-- Reviewers: Josh Torre
+- Cases discarded: 0. Rejection rate: 0%.
+- Reviewers: Anish Sahoo, Joshua Torre.
 
 ## Golden set
 
@@ -44,7 +44,7 @@ The golden set contains every ambiguous case and every injection case, plus two 
 3. Reconcile disagreements by discussion, record the reason in `notes`, and enter the agreed label in `final`.
 4. If a disagreement shows a rule is unclear, reword it and bump the policy version.
 
-No LLM supplies any label. Status: `labeler_a` is complete for all 39 cases; `labeler_b`, `final` and `notes` are blank until the second labeler and the reconciliation are done.
+Status: both labeler columns and final labels are complete for all 39 cases. Reconciliation notes are recorded for every disagreement.
 
 ## Splits and leakage
 
@@ -57,12 +57,12 @@ Output of the check script in the course's `README_Corpus.md`, run on `corpus.js
 ```
 cases:           122 (minimum 100)
 with violation:  88 (72%, minimum 15%)
-by tier:         {'none': 34, 'T1': 16, 'T2': 30, 'T3': 15, 'T4': 27}
+by tier:         {'none': 34, 'T1': 17, 'T2': 30, 'T3': 15, 'T4': 26}
 ambiguous:       15 (minimum 5)
 injection:       8 (minimum 2)
 not reviewed:    0 (must be 0)
 ```
 
-`scripts/check_corpus.py` (our internal checker): [TEAM TO COMPLETE: paste output once the script is updated for the template field names.]
+All 122 cases are reviewed with status `review_status: "reviewed"`. Golden-set cases list both Anish Sahoo and Joshua Torre in `reviewed_by`; the remaining cases list Anish Sahoo.
 
-Golden-set agreement between `labeler_a` and `labeler_b`: [TEAM TO COMPLETE after labeling: percent agreement and Cohen's kappa.]
+On the 39 golden-set cases, the two labelers agreed on 33 exact labels (84.6%), with Cohen's kappa of 0.826, as computed by `scripts/check_corpus.py`. Exact-label agreement compares the tier and complete set of broken rules, ignoring rule order. These figures use the independent labels before reconciliation, not the final agreed labels.
