@@ -12,8 +12,8 @@ label   Blind labeling of the golden set. Shows only id and content from
         column of golden.csv. It never shows the other labeler's column.
 
 Usage:
-  python3 scripts/review_ui.py review [--include-golden]
-  python3 scripts/review_ui.py label --column labeler_a|labeler_b
+  python3 data/scripts/review_ui.py review [--include-golden]
+  python3 data/scripts/review_ui.py label --column labeler_a|labeler_b
   (both take --port 8765 and --no-browser)
 
 Review keys: K keep, C correct, D discard, N notes, left/right previous/next,

@@ -1,0 +1,63 @@
+[project]
+name = "kangaroo"
+version = "0.1.0"
+description = "Policy-governed meeting action agent (FP3 alpha)."
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "alembic>=1.20.1,<2",
+    "anyio>=4.10,<5",
+    "fastapi>=0.163.1,<0.164",
+    "httpx>=0.28.1,<0.29",
+    "langchain-core>=1.8.1,<2",
+    "langchain-openai>=1.8.0,<2",
+    "langgraph>=1.2.22,<2",
+    "psycopg[binary]>=3.3.9,<4",
+    "pydantic>=2.14.3,<3",
+    "pydantic-settings>=2.16.3,<3",
+    "sqlalchemy[asyncio]>=2.1.8,<2.2",
+    "sse-starlette>=3.7.0,<4",
+    "uvicorn[standard]>=0.54.0,<0.55",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0,<10",
+    "pytest-asyncio>=1.5.0,<2",
+    "ruff>=0.17.5,<0.18",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.16,<0.13"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # bugbear
+    "UP",    # pyupgrade
+    "SIM",   # simplify
+    "RUF",   # ruff-specific
+    "ASYNC", # async pitfalls
+    "PT",    # pytest style
+    "N",     # naming
+    "C4",    # comprehensions
+    "RET",   # return statements
+    "PTH",   # pathlib
+    "BLE",   # blind except (deliberate ones need a noqa with a reason)
+]
+
+[tool.ruff.lint.isort]
+known-third-party = ["alembic"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["live: calls real services (OpenRouter, Neon); run with KANGAROO_LIVE=1"]
