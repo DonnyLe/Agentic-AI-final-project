@@ -1,0 +1,52 @@
+@import "@fontsource-variable/inter/opsz.css";
+@import "@fontsource/instrument-serif/400-italic.css";
+@import "@fontsource-variable/geist-mono";
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+
+  /* Cream paper, warm ink, forest green brand, butter call to action. */
+  --color-cream: #fbf7ee;
+  --color-cream-2: #f3ede0;
+  --color-line: #e7dfcf;
+  --color-ink: #1a1814;
+  --color-ink-2: #4a463d;
+  --color-ink-3: #8a8476;
+  --color-forest: #0f4d3a;
+  --color-forest-2: #0a3a2b;
+  --color-mint: #9fe0bf;
+  --color-butter: #f4cf5d;
+
+  /* Verdict pills: background / text pairs. */
+  --color-ok-bg: #e5f2ea;
+  --color-ok: #1d6b45;
+  --color-bad-bg: #fbe7e1;
+  --color-bad: #b23a1e;
+  --color-out-bg: #eceef1;
+  --color-out: #4b5563;
+  --color-hold-bg: #faf0d6;
+  --color-hold: #8a6110;
+
+  --shadow-card: 0 1px 0 rgb(26 24 20 / 0.04), 0 12px 32px -12px rgb(26 24 20 / 0.12);
+}
+
+html {
+  background: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-butter);
+  color: var(--color-ink);
+}
+
+.dot-grid {
+  background-image: radial-gradient(rgb(26 24 20 / 0.12) 1px, transparent 1px);
+  background-size: 18px 18px;
+}

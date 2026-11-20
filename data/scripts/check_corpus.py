@@ -7,7 +7,7 @@ requirements quoted in our F2 document plus internal consistency:
   unique IDs, valid label syntax, review completion, no metadata leakage in
   the labelers' packet.
 
-Usage: python3 scripts/check_corpus.py [dir]
+Usage: python3 data/scripts/check_corpus.py [dir]   (dir defaults to data/)
 Exit code 1 if any ERROR; WARN lines are things to resolve before submission.
 """
 import csv
@@ -185,7 +185,8 @@ def check(d):
 
 
 if __name__ == "__main__":
-    check(sys.argv[1] if len(sys.argv) > 1 else ".")
+    data_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    check(sys.argv[1] if len(sys.argv) > 1 else data_dir)
     pending = sum("not yet human-reviewed" in w for w in warns)
     empty = sum(" empty" in w for w in warns)
     for w in warns:

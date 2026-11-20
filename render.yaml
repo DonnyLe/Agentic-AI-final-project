@@ -1,0 +1,20 @@
+# Render blueprint: one Docker web service. Secrets are entered in the Render
+# dashboard (sync: false), never committed.
+services:
+  - type: web
+    name: kangaroo
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: KANGAROO_ACCESS_TOKEN
+        sync: false
+      - key: LLM_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: KANGAROO_MODEL_DEFAULT
+        value: nvidia/nemotron-3.5-lightning:free

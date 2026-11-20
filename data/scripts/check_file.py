@@ -1,8 +1,11 @@
 import json
+import os
 from collections import Counter
 
+DATA = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 cases = []
-with open("corpus.jsonl") as f:
+with open(os.path.join(DATA, "corpus.jsonl")) as f:
     for n, line in enumerate(f, 1):
         try:
             cases.append(json.loads(line))
