@@ -17,6 +17,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.runnables import Runnable
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ValidationError
 
@@ -47,24 +48,35 @@ class OpenAICompatibleModels:
             check_every_n_seconds=0.1,
             max_bucket_size=2,
         )
-        self._clients = {
-            role: ChatOpenAI(
-                model=settings.model_for(role),
-                base_url=settings.llm_base_url,
-                api_key=settings.openrouter_api_key,
-                temperature=0,
-                timeout=90,
-                max_retries=6,
-                rate_limiter=limiter,
-            )
-            for role in Role
-        }
+        self._clients = {role: _client(settings, role, limiter) for role in Role}
 
     def model_names(self) -> dict[str, str]:
         return {role.value: self.settings.model_for(role) for role in Role}
 
     def for_role(self, role: Role) -> BaseChatModel:
         return self._clients[role]
+
+
+def _client(settings: Settings, role: Role, limiter: InMemoryRateLimiter) -> BaseChatModel:
+    if settings.llm_provider == "google":
+        return ChatGoogleGenerativeAI(
+            model=settings.model_for(role),
+            google_api_key=settings.google_api_key,
+            temperature=0,
+            timeout=90,
+            max_retries=6,
+            rate_limiter=limiter,
+        )
+
+    return ChatOpenAI(
+        model=settings.model_for(role),
+        base_url=settings.llm_base_url,
+        api_key=settings.openrouter_api_key,
+        temperature=0,
+        timeout=90,
+        max_retries=6,
+        rate_limiter=limiter,
+    )
 
 
 def with_retries[I, O](runnable: Runnable[I, O]) -> Runnable[I, O]:

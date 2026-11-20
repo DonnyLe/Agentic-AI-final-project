@@ -3,6 +3,7 @@
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,8 +25,13 @@ class Role(StrEnum):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=APP_DIR / ".env", extra="ignore")
 
+    # "openai": any OpenAI-compatible endpoint (OpenRouter by default).
+    # "google": Gemini through ChatGoogleGenerativeAI, which keeps Gemini 3's tool-call
+    # thought signatures that the OpenAI-compatible endpoint drops.
+    llm_provider: Literal["openai", "google"] = "openai"
     llm_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_api_key: SecretStr = SecretStr("")
+    google_api_key: SecretStr = SecretStr("")
 
     kangaroo_model_default: str = "nvidia/nemotron-3.5-lightning:free"
     kangaroo_model_intake: str = ""
