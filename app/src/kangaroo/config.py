@@ -1,5 +1,11 @@
-"""Application settings, read from the environment and app/.env."""
+"""Application settings, read from the environment and an env file.
 
+Local dev reads app/.env. With KANGAROO_ENV=prod, app/.env.prod is read instead,
+for running migrations, seeds or evals against the deployed (Neon) database.
+Real environment variables always win over either file.
+"""
+
+import os
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
@@ -10,6 +16,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 APP_DIR = Path(__file__).resolve().parents[2]
 REPO_DIR = APP_DIR.parent
 DATA_DIR = REPO_DIR / "data"
+ENV_FILE = APP_DIR / (".env.prod" if os.environ.get("KANGAROO_ENV") == "prod" else ".env")
 
 
 class Role(StrEnum):
@@ -22,7 +29,7 @@ class Role(StrEnum):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=APP_DIR / ".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=ENV_FILE, extra="ignore")
 
     llm_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_api_key: SecretStr = SecretStr("")
