@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage
 from kangaroo.config import Role
 from kangaroo.corpus import load_cases
 from kangaroo.graph import build_graph, stream_run
-from kangaroo.guards import FLAG_POSSIBLE_INJECTION
+from kangaroo.guards import FLAG_POSSIBLE_INJECTION, FLAG_TIER_HINT_MISMATCH
 from kangaroo.models.agent_io import (
     AdjudicatorOutput,
     EvidenceFinding,
@@ -24,10 +24,10 @@ CASES = {case.id: case for case in load_cases()}
 POLICY = load_policy()
 
 
-def intake(tier: str, proposers: list[str] | None = None) -> AIMessage:
+def intake(hint: str | None = None, proposers: list[str] | None = None) -> AIMessage:
     return structured(
         IntakeResult(
-            action_class=tier,
+            action_type_hint=hint,
             action_summary="do the thing",
             proposers=proposers or ["Aisha Rahman"],
             cited_segment_ids=[],
@@ -35,8 +35,16 @@ def intake(tier: str, proposers: list[str] | None = None) -> AIMessage:
     )
 
 
-def route(step: str, tasks: list[EvidenceTask] | None = None) -> AIMessage:
-    return structured(SupervisorDecision(next_step=step, evidence_tasks=tasks or [], reason="why"))
+def route(step: str, tasks: list[EvidenceTask] | None = None, tier: str = "T2") -> AIMessage:
+    return structured(
+        SupervisorDecision(
+            tier=tier,
+            tier_reason="the action's kind",
+            next_step=step,
+            evidence_tasks=tasks or [],
+            reason="why",
+        )
+    )
 
 
 def verdict(kind: str, rules: list[str] | None = None) -> AIMessage:
@@ -67,14 +75,14 @@ async def run(models: ScriptedModels, case: Case) -> tuple[Decision, list[TraceE
 
 
 def routes(events: list[TraceEvent]) -> list[str]:
-    return [e.payload.get("next_step", "") for e in events if e.kind == TraceKind.ROUTE]
+    return [e.payload["next_step"] for e in events if "next_step" in e.payload]
 
 
 async def test_t1_goes_straight_to_the_adjudicator() -> None:
     models = ScriptedModels(
         {
-            Role.INTAKE: [intake("T1")],
-            Role.SUPERVISOR: [route("adjudicate")],
+            Role.INTAKE: [intake("record")],
+            Role.SUPERVISOR: [route("adjudicate", tier="T1")],
             Role.EVIDENCE: [],
             Role.ADJUDICATOR: [verdict("violation", ["R1.1"])],
         }
@@ -92,7 +100,7 @@ async def test_t2_with_a_blamed_library_checks_duplicates_and_the_dependency() -
     tasks = [EvidenceTask.DUPLICATE_SEARCH, EvidenceTask.DEPENDENCY_CHECK]
     models = ScriptedModels(
         {
-            Role.INTAKE: [intake("T2")],
+            Role.INTAKE: [intake("ticket")],
             Role.SUPERVISOR: [route("gather_evidence", tasks), route("adjudicate")],
             Role.EVIDENCE: [
                 tool_reply("search_tickets", {"query": "refresh token invalid_signature"}),
@@ -119,7 +127,7 @@ async def test_t2_with_a_blamed_library_checks_duplicates_and_the_dependency() -
 async def test_t2_without_a_library_skips_the_dependency_check_and_flags_injection() -> None:
     models = ScriptedModels(
         {
-            Role.INTAKE: [intake("T2")],
+            Role.INTAKE: [intake("ticket")],
             Role.SUPERVISOR: [
                 route("gather_evidence", [EvidenceTask.DUPLICATE_SEARCH]),
                 route("adjudicate"),
@@ -135,7 +143,7 @@ async def test_t2_without_a_library_skips_the_dependency_check_and_flags_injecti
 
     decision, events = await run(models, CASES["K-109"])
 
-    route_events = [e for e in events if e.kind == TraceKind.ROUTE]
+    route_events = [e for e in events if "evidence_tasks" in e.payload]
 
     assert route_events[0].payload["evidence_tasks"] == ["duplicate_search"]
     assert decision.label == "T2 R2.2"
@@ -143,22 +151,82 @@ async def test_t2_without_a_library_skips_the_dependency_check_and_flags_injecti
     assert "Link the report" in decision.proposed_action.summary
 
 
-async def test_t3_is_unsupported_without_calling_the_supervisor() -> None:
+async def test_supervisor_tier_t3_is_unsupported_after_one_supervisor_call() -> None:
     models = ScriptedModels(
-        {Role.INTAKE: [intake("T3")], Role.SUPERVISOR: [], Role.EVIDENCE: [], Role.ADJUDICATOR: []}
+        {
+            Role.INTAKE: [intake("calendar")],
+            Role.SUPERVISOR: [route("adjudicate", tier="T3")],
+            Role.EVIDENCE: [],
+            Role.ADJUDICATOR: [],
+        }
     )
 
     decision, _ = await run(models, CASES["K-063"])
 
     assert decision.verdict == Verdict.UNSUPPORTED
-    assert not models.models[Role.SUPERVISOR].calls
+    assert decision.tier == "T3"
+    assert len(models.models[Role.SUPERVISOR].calls) == 1
+    assert not models.models[Role.ADJUDICATOR].calls
+
+
+async def test_intake_has_no_policy_and_the_supervisor_sees_all_of_it() -> None:
+    models = ScriptedModels(
+        {
+            Role.INTAKE: [intake("record")],
+            Role.SUPERVISOR: [route("adjudicate", tier="T1")],
+            Role.EVIDENCE: [],
+            Role.ADJUDICATOR: [verdict("violation", ["R1.1"])],
+        }
+    )
+
+    await run(models, CASES["K-012"])
+
+    intake_prompt = " ".join(str(m.content) for m in models.models[Role.INTAKE].calls[0])
+    supervisor_prompt = models.models[Role.SUPERVISOR].calls[0][-1].content
+
+    assert "R1.1" not in intake_prompt
+    assert all(rule_id in supervisor_prompt for rule_id in POLICY.rules)
+
+
+async def test_supervisor_tier_overrides_a_wrong_intake_hint() -> None:
+    models = ScriptedModels(
+        {
+            Role.INTAKE: [intake("calendar")],
+            Role.SUPERVISOR: [route("adjudicate", tier="T1")],
+            Role.EVIDENCE: [],
+            Role.ADJUDICATOR: [verdict("violation", ["R1.1"])],
+        }
+    )
+
+    decision, _ = await run(models, CASES["K-012"])
+
+    assert decision.label == "T1 R1.1"
+    assert FLAG_TIER_HINT_MISMATCH in decision.flags
+
+
+async def test_tier_is_fixed_after_the_first_supervisor_turn() -> None:
+    task = [EvidenceTask.DUPLICATE_SEARCH]
+    models = ScriptedModels(
+        {
+            Role.INTAKE: [intake("ticket")],
+            Role.SUPERVISOR: [route("gather_evidence", task), route("adjudicate", tier="T4")],
+            Role.EVIDENCE: [AIMessage(content="nothing to call"), report(*task)],
+            Role.ADJUDICATOR: [verdict("no_violation")],
+        }
+    )
+
+    decision, events = await run(models, CASES["K-051"])
+
+    assert decision.label == "none"
+    assert decision.tier == "T2"
+    assert any("keeping T2" in e.message for e in events if e.kind == TraceKind.GUARD)
 
 
 async def test_bad_rules_get_one_repair_then_needs_review() -> None:
     models = ScriptedModels(
         {
-            Role.INTAKE: [intake("T1")],
-            Role.SUPERVISOR: [route("adjudicate")],
+            Role.INTAKE: [intake("record")],
+            Role.SUPERVISOR: [route("adjudicate", tier="T1")],
             Role.EVIDENCE: [],
             Role.ADJUDICATOR: [verdict("violation", ["R2.3"]), verdict("violation", ["R9.9"])],
         }
@@ -174,8 +242,8 @@ async def test_bad_rules_get_one_repair_then_needs_review() -> None:
 async def test_repair_that_works_is_accepted() -> None:
     models = ScriptedModels(
         {
-            Role.INTAKE: [intake("T1")],
-            Role.SUPERVISOR: [route("adjudicate")],
+            Role.INTAKE: [intake("record")],
+            Role.SUPERVISOR: [route("adjudicate", tier="T1")],
             Role.EVIDENCE: [],
             Role.ADJUDICATOR: [verdict("violation", ["R2.3"]), verdict("violation", ["R1.2"])],
         }
@@ -207,7 +275,7 @@ async def test_evidence_rounds_are_capped() -> None:
     one_round = [AIMessage(content="nothing to call"), report(*task)]
     models = ScriptedModels(
         {
-            Role.INTAKE: [intake("T2")],
+            Role.INTAKE: [intake("ticket")],
             Role.SUPERVISOR: [route("gather_evidence", task)] * 3,
             Role.EVIDENCE: one_round * 2,
             Role.ADJUDICATOR: [verdict("no_violation")],
@@ -223,7 +291,7 @@ async def test_evidence_rounds_are_capped() -> None:
 async def test_escalation() -> None:
     models = ScriptedModels(
         {
-            Role.INTAKE: [intake("T2")],
+            Role.INTAKE: [intake("ticket")],
             Role.SUPERVISOR: [route("escalate")],
             Role.EVIDENCE: [],
             Role.ADJUDICATOR: [],

@@ -15,6 +15,9 @@ from kangaroo.policy import Policy
 FLAG_POSSIBLE_INJECTION = "possible_injection"
 FLAG_APPROVER_IS_PROPOSER = "approver_is_proposer"
 FLAG_AGENT_ERROR = "agent_error"
+FLAG_TIER_HINT_MISMATCH = "tier_hint_mismatch"
+
+_HINT_TIERS: dict[str, Tier] = {"record": "T1", "ticket": "T2", "calendar": "T3", "code": "T4"}
 
 _ENGINEER_APPROVER = "an engineer who is not a proposer"
 
@@ -91,6 +94,11 @@ _NEEDS_REVIEW = ProposedAction(
 
 def is_supported(tier: Tier) -> bool:
     return tier in SUPPORTED_TIERS
+
+
+def hint_tier(hint: str | None) -> Tier | None:
+    """The tier intake's non-binding action-type hint points to, if any."""
+    return _HINT_TIERS.get(hint) if hint else None
 
 
 def check_adjudication(output: AdjudicatorOutput, tier: Tier, policy: Policy) -> list[str]:

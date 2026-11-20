@@ -30,7 +30,7 @@ def t1_script() -> ScriptedModels:
             Role.INTAKE: [
                 structured(
                     IntakeResult(
-                        action_class="T1",
+                        action_type_hint="record",
                         action_summary="record a decision",
                         proposers=["Tom Ricci"],
                         cited_segment_ids=[],
@@ -38,7 +38,14 @@ def t1_script() -> ScriptedModels:
                 )
             ],
             Role.SUPERVISOR: [
-                structured(SupervisorDecision(next_step="adjudicate", reason="transcript only"))
+                structured(
+                    SupervisorDecision(
+                        tier="T1",
+                        tier_reason="saves a note",
+                        next_step="adjudicate",
+                        reason="transcript only",
+                    )
+                )
             ],
             Role.EVIDENCE: [],
             Role.ADJUDICATOR: [

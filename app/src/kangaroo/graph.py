@@ -1,11 +1,14 @@
 """The Kangaroo agent graph (LangGraph).
 
-intake ─┬─ T3/T4 ──────────────────────────────► unsupported
-        └─ T1/T2 ─► supervisor ─┬─ gather ─► evidence ─┐
-                       ▲        │                      │
-                       └────────┼──────────────────────┘
-                                ├─ adjudicate ─► adjudicator (+ guards)
-                                └─ escalate ───► needs_review
+intake ─► supervisor ─┬─ tier T3/T4 ─► unsupported
+   ▲ (extracts only)  ├─ gather ─────► evidence ─┐
+                      ▲                          │
+                      └──────────────────────────┘
+                      ├─ adjudicate ─► adjudicator (+ guards)
+                      └─ escalate ───► needs_review
+
+Intake extracts facts without the policy. The supervisor reads the whole policy and
+assigns the tier on its first turn; the tier is then fixed for the rest of the run.
 
 Each node streams TraceEvents through LangGraph's custom stream. Any node that
 fails ends the run with a `needs_review` decision instead of a guess.
@@ -33,7 +36,7 @@ from kangaroo.models.agent_io import (
     IntakeResult,
     SupervisorDecision,
 )
-from kangaroo.models.case import Case
+from kangaroo.models.case import Case, Tier
 from kangaroo.models.decision import Decision
 from kangaroo.models.trace import TraceEvent, TraceKind
 from kangaroo.policy import Policy
@@ -48,6 +51,7 @@ class RunState(BaseModel):
     case: Case
     intake: IntakeResult | None = None
     supervisor: SupervisorDecision | None = None
+    tier: Tier | None = None
     findings: list[EvidenceFinding] = Field(default_factory=list)
     evidence_log: list[str] = Field(default_factory=list)
     rounds: int = 0
@@ -81,7 +85,7 @@ def build_graph(
                 except Exception as error:  # noqa: BLE001 - every failure must end in needs_review
                     reason = f"{name} failed: {type(error).__name__}: {error}"
                     emit(name, TraceKind.ERROR, reason)
-                    tier = state.intake.action_class if state.intake else None
+                    tier = state.tier
                     flags = _add_flag(state.flags, guards.FLAG_AGENT_ERROR)
                     decision = guards.needs_review(reason, policy, tier=tier, flags=flags)
 
@@ -103,22 +107,22 @@ def build_graph(
         emit(
             "intake",
             TraceKind.INTAKE,
-            f"{result.action_class} action: {result.action_summary}",
+            result.action_summary,
             intake=result.model_dump(mode="json"),
             possible_injection=injected,
         )
 
         return {"intake": result, "flags": flags}
 
-    def after_intake(state: RunState) -> Literal["supervisor", "unsupported", "__end__"]:
+    def after_intake(state: RunState) -> Literal["supervisor", "__end__"]:
         if state.decision is not None or state.intake is None:
             return END
 
-        return "supervisor" if guards.is_supported(state.intake.action_class) else "unsupported"
+        return "supervisor"
 
     async def unsupported(state: RunState) -> Update:
-        assert state.intake is not None
-        tier = state.intake.action_class
+        assert state.tier is not None
+        tier = state.tier
         decision = guards.unsupported(tier, policy, state.flags)
 
         emit(
@@ -135,9 +139,47 @@ def build_graph(
             models.for_role(Role.SUPERVISOR),
             SupervisorDecision,
             prompts.supervisor_messages(
-                state.case, state.intake, policy, state.findings, state.rounds, max_rounds
+                state.case,
+                state.intake,
+                policy,
+                state.findings,
+                state.rounds,
+                max_rounds,
+                tier=state.tier,
             ),
         )
+        flags = state.flags
+
+        if state.tier is None:
+            tier = decision.tier
+            hint_tier = guards.hint_tier(state.intake.action_type_hint)
+            mismatch = hint_tier is not None and hint_tier != tier
+
+            if mismatch:
+                flags = _add_flag(flags, guards.FLAG_TIER_HINT_MISMATCH)
+
+            emit(
+                "supervisor",
+                TraceKind.ROUTE,
+                f"Tier {tier}: {decision.tier_reason}"
+                + (f" (intake's hint suggested {hint_tier})" if mismatch else ""),
+                tier=tier,
+                intake_hint=hint_tier,
+            )
+
+            if not guards.is_supported(tier):
+                return {"supervisor": decision, "tier": tier, "flags": flags}
+        else:
+            tier = state.tier
+
+            if decision.tier != tier:
+                emit(
+                    "supervisor",
+                    TraceKind.GUARD,
+                    f"Supervisor changed the tier to {decision.tier}; keeping {tier}.",
+                )
+                decision = decision.model_copy(update={"tier": tier})
+
         note = ""
 
         if decision.next_step == "gather_evidence" and state.rounds >= max_rounds:
@@ -157,13 +199,16 @@ def build_graph(
             round=state.rounds,
         )
 
-        return {"supervisor": decision}
+        return {"supervisor": decision, "tier": tier, "flags": flags}
 
     def after_supervisor(
         state: RunState,
-    ) -> Literal["evidence", "adjudicator", "escalate", "__end__"]:
-        if state.decision is not None or state.supervisor is None:
+    ) -> Literal["unsupported", "evidence", "adjudicator", "escalate", "__end__"]:
+        if state.decision is not None or state.supervisor is None or state.tier is None:
             return END
+
+        if not guards.is_supported(state.tier):
+            return "unsupported"
 
         return {
             "gather_evidence": "evidence",
@@ -246,9 +291,10 @@ def build_graph(
     @guarded("adjudicator")
     async def adjudicator(state: RunState) -> Update:
         assert state.intake is not None
-        tier = state.intake.action_class
+        assert state.tier is not None
+        tier = state.tier
         model = models.for_role(Role.ADJUDICATOR)
-        args = (state.case, state.intake, policy, state.findings, state.evidence_log)
+        args = (state.case, state.intake, tier, policy, state.findings, state.evidence_log)
 
         output = await structured_call(
             model, AdjudicatorOutput, prompts.adjudicator_messages(*args)
@@ -295,8 +341,7 @@ def build_graph(
 
     async def escalate(state: RunState) -> Update:
         reason = state.supervisor.reason if state.supervisor else "Escalated."
-        tier = state.intake.action_class if state.intake else None
-        decision = guards.needs_review(reason, policy, tier=tier, flags=state.flags)
+        decision = guards.needs_review(reason, policy, tier=state.tier, flags=state.flags)
 
         emit("supervisor", TraceKind.DECISION, f"Escalated: {reason}", label=decision.label)
 

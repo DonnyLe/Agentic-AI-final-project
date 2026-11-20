@@ -9,14 +9,16 @@ from kangaroo.models.case import Tier
 
 
 class IntakeResult(BaseModel):
-    """What the candidate action is and who proposed it."""
+    """What the candidate action is and who proposed it. Intake extracts; it doesn't decide
+    the tier. The supervisor assigns the tier against the policy."""
 
-    action_class: Tier = Field(
+    action_type_hint: Literal["record", "ticket", "calendar", "code"] | None = Field(
+        default=None,
         description=(
-            "Tier of the candidate action itself: T1 = save an internal note/record; "
-            "T2 = file, link, or mark a defect ticket; T3 = create a calendar hold; "
-            "T4 = modify code, open a PR, or a fix plan."
-        )
+            "Rough, non-binding guess at what kind of action this is: record (save a note "
+            "or decision), ticket (file or link a defect ticket), calendar (schedule a "
+            "meeting), code (change code, open a PR, write a fix plan). Null if unclear."
+        ),
     )
     action_summary: str = Field(description="One sentence: what Kangaroo is about to do.")
     proposers: list[str] = Field(
@@ -43,8 +45,17 @@ class EvidenceTask(StrEnum):
 
 
 class SupervisorDecision(BaseModel):
-    """The supervisor's next step for this case."""
+    """The supervisor's tier for the candidate action and its next step for this case."""
 
+    tier: Tier = Field(
+        description=(
+            "Policy tier of the candidate action itself (T1 Record, T2 Ticket, "
+            "T3 Coordination, T4 Code change), per the policy's tier table."
+        )
+    )
+    tier_reason: str = Field(
+        description="One sentence: why the candidate action belongs to this tier."
+    )
     next_step: Literal["gather_evidence", "adjudicate", "escalate"] = Field(
         description=(
             "gather_evidence: run the listed evidence tasks. adjudicate: the evidence is "

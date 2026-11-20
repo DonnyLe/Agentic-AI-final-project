@@ -44,7 +44,9 @@ def intake_messages(case: Case) -> list[BaseMessage]:
     return [
         SystemMessage(
             "You are the intake step of Kangaroo, which checks meeting follow-up actions "
-            "against a team policy. Classify the candidate action and pull out who proposed it. "
+            "against a team policy. Extract the facts about the candidate action: what it does, "
+            "who proposed it, the segments behind it, tickets mentioned and any blamed "
+            "third-party library. Don't judge it against the policy; the supervisor does that. "
             + UNTRUSTED
         ),
         HumanMessage(render_case(case)),
@@ -58,12 +60,22 @@ def supervisor_messages(
     findings: list[EvidenceFinding],
     rounds: int,
     max_rounds: int,
+    tier: Tier | None = None,
 ) -> list[BaseMessage]:
     gathered = "\n".join(f"- {f.task}: {f.status}. {f.summary}" for f in findings) or "none yet"
+    tier_note = (
+        f"You already assigned tier {tier} on your first turn; return {tier} unchanged."
+        if tier
+        else "First assign the candidate action's tier using the policy's tier table."
+    )
 
     return [
         SystemMessage(
-            "You are the supervisor of Kangaroo. Decide the next step for this case: gather "
+            "You are the supervisor of Kangaroo and the only role that reads the whole policy. "
+            "Assign the candidate action's tier: the tier of the action Kangaroo would take "
+            "(saving a note is T1 even if the meeting discussed a bug; filing a ticket is T2). "
+            "Tiers T3 and T4 are outside the alpha and end the run, so classify carefully. "
+            "Then decide the next step for this case: gather "
             "only the evidence this case needs, adjudicate once the evidence is enough, or "
             "escalate if it can't be settled. Evidence tasks:\n"
             "- duplicate_search: search open tickets for a matching defect\n"
@@ -80,8 +92,9 @@ def supervisor_messages(
         ),
         HumanMessage(
             f"{render_case(case)}\n\n"
-            f"Intake: {intake.model_dump_json()}\n\n"
-            f"Policy rules for {intake.action_class}:\n{_rules_text(policy, intake.action_class)}"
+            f"Intake (extracted facts; its action_type_hint is a rough guess, not a ruling): "
+            f"{intake.model_dump_json()}\n\n"
+            f"<policy>\n{policy.text}\n</policy>\n\n{tier_note}"
             f"\n\nEvidence gathered so far:\n{gathered}\n\n"
             f"Evidence rounds used: {rounds} of {max_rounds}."
         ),
@@ -121,6 +134,7 @@ def findings_messages(
 def adjudicator_messages(
     case: Case,
     intake: IntakeResult,
+    tier: Tier,
     policy: Policy,
     findings: list[EvidenceFinding],
     evidence_log: list[str],
@@ -138,11 +152,11 @@ def adjudicator_messages(
         SystemMessage(
             "You are Kangaroo's adjudicator. Decide whether carrying out the candidate action "
             f"exactly as written would break the policy (v{policy.version}). Cite only rules "
-            f"for the action's tier ({intake.action_class}). " + UNTRUSTED
+            f"for the action's tier ({tier}), as assigned by the supervisor. " + UNTRUSTED
         ),
         HumanMessage(
             f"{render_case(case)}\n\nIntake: {intake.model_dump_json()}\n\n"
-            f"Rules for {intake.action_class}:\n{_rules_text(policy, intake.action_class)}\n\n"
+            f"Rules for {tier}:\n{_rules_text(policy, tier)}\n\n"
             f"{_HOW_APPLIED}\n\nEvidence findings:\n{gathered}\n\n"
             f"Evidence tool results:\n{log}{repair}"
         ),
