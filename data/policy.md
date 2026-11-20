@@ -68,7 +68,6 @@ This policy governs the follow-up actions Kangaroo proposes after engineering me
 
 | Version | Date | Change |
 |---|---|---|
-| 1.0 | [TEAM TO COMPLETE] | First version |
-| 1.1 | [TEAM TO COMPLETE] | [TEAM TO COMPLETE: what changed from 1.0] |
+| 1.0 | 2026-10-17 | First version |
 | 1.2 | 2026-11-08 | Restructured to the course policy template: added the case description, the tiers table with default action and approval columns, short rule names, and "How the rules are applied" (global constraints moved here). Added handling for several findings in one case. Rule wording unchanged. |
 | 1.3 | 2026-11-08 | Clarified R2.1: a complete defect ticket needs an expected behavior supported by a settled requirement, specification, or reliable reproduction. |

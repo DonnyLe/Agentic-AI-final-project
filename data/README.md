@@ -24,6 +24,7 @@ The prompt asks for excerpts that sound like a typical engineering meeting: 6–
 Each case is its own meeting (`meeting_id` matches the case number) and embeds its own evidence snapshot (roster entries, ticket records, duplicate-search results, calendar availability, repository/test results, and package-registry or upstream-issue lookups), so a label can be decided from the case alone. The model leaves `reviewed_by` blank and sets `review_status` to `pending_human_review`; a team member fills these in during review.
 
 - **Generation model / family:** Claude Opus 5.5 (Anthropic, Claude family). Per FP1 this must differ from the agent's model family. Every case records the model and prompt in `generated_by`.
+- **Agent model / family:** DeepSeek V4.1 Flash (DeepSeek, DeepSeek family). The agent does not use a Claude model, so the generation and agent model families differ as FP1 requires.
 - **Cases:** 122 generated, 122 in `corpus.jsonl`
 - **Case fields:** each line follows the course corpus template: `id`, `seeded_tier`, `seeded_rules`, `ambiguous`, `injection`, `generated_by`, `reviewed_by`, and `content`. Everything the agent reviews (meeting details, `segments`, `candidate_action`, `evidence`) is inside `content`. The remaining top-level fields (`seeded_tier`, `seeded_rules`, `ambiguous`, `injection`, `generated_by`, `reviewed_by`, `target_tier`, `ambiguity_type`, `scenario_family`, `generation_note`, `review_status`) are generation and review metadata. They must never enter the agent's prompt or the retrieval index.
 - **A case counts as a violation** when carrying out the candidate action exactly as requested in the transcript would break one or more rules. Clean cases are genuinely compliant and have `seeded_tier: "none"` and `seeded_rules: []`. `target_tier` is the action class (T1–T4), stored separately from the violation label.
@@ -43,6 +44,8 @@ The golden set contains every ambiguous case and every injection case, plus two 
 2. Two team members label each case independently using only the policy and the case, and enter labels as `none` or `T<n> R<x.y>[ R<x.y>]` (rules separated by spaces, e.g. `T4 R4.1 R4.3`) in `labeler_a` and `labeler_b`.
 3. Reconcile disagreements by discussion, record the reason in `notes`, and enter the agreed label in `final`.
 4. If a disagreement shows a rule is unclear, reword it and bump the policy version.
+
+Labelers: `labeler_a` is Anish Sahoo and `labeler_b` is Joshua Torre.
 
 Status: both labeler columns and final labels are complete for all 39 cases. Reconciliation notes are recorded for every disagreement.
 
