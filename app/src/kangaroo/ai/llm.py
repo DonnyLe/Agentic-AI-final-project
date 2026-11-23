@@ -9,6 +9,7 @@ If all fail it raises `StructuredOutputError`, which the graph turns into
 """
 
 import json
+import logging
 import re
 from typing import Protocol
 
@@ -21,6 +22,8 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ValidationError
 
 from kangaroo.config import Role, Settings
+
+logger = logging.getLogger(__name__)
 
 
 class StructuredOutputError(RuntimeError):
@@ -121,8 +124,10 @@ async def structured_call[T: BaseModel](
     text = raw.text if isinstance(raw.text, str) else str(raw.content)
 
     if parsed := parse_json_reply(text, schema):
+        logger.debug("%s: no tool call, used JSON from the reply text", schema.__name__)
         return parsed
 
+    logger.info("%s: no valid tool call or JSON, nudging once", schema.__name__)
     nudge = HumanMessage(
         f"Your last reply was not a valid `{schema.__name__}` tool call "
         f"({result['parsing_error'] or 'no tool call'}). "
@@ -138,4 +143,5 @@ async def structured_call[T: BaseModel](
     if parsed := parse_json_reply(str(retry_raw.content), schema):
         return parsed
 
+    logger.warning("%s: no valid output after the nudge", schema.__name__)
     raise StructuredOutputError(f"No valid {schema.__name__} after a retry.")

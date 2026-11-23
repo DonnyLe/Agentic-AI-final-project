@@ -1,6 +1,6 @@
 # Free model comparison (intake role, structured output)
 
-Run with `uv run python -m kangaroo.compare_models --trials 5 --models ...` on 2026-11-15, OpenRouter free tier. "Tool call" means a valid `IntakeResult` function call on the first try; "Error" means the provider returned an error (rate limit or unavailable).
+Run with `uv run python -m kangaroo.scripts.compare_models --trials 5 --models ...` on 2026-11-15, OpenRouter free tier. "Tool call" means a valid `IntakeResult` function call on the first try; "Error" means the provider returned an error (rate limit or unavailable).
 
 | Model | Tool call | Text JSON | Fail | Error | Avg time |
 |---|---|---|---|---|---|

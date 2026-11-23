@@ -1,12 +1,12 @@
 """Graph routing tests with scripted models (no network)."""
 
+from corpus import load_cases
 from fakes import ScriptedModels, structured, tool_reply
 from langchain_core.messages import AIMessage
 
+from kangaroo.ai.agents.graph import build_graph, stream_run
+from kangaroo.ai.agents.guards import FLAG_POSSIBLE_INJECTION
 from kangaroo.config import Role
-from kangaroo.corpus import load_cases
-from kangaroo.graph import build_graph, stream_run
-from kangaroo.guards import FLAG_POSSIBLE_INJECTION
 from kangaroo.models.agent_io import (
     AdjudicatorOutput,
     EvidenceFinding,

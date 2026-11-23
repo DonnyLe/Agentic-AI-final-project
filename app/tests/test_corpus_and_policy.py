@@ -1,8 +1,8 @@
 import json
 
 import pytest
+from corpus import CORPUS_PATH, load_cases, load_golden_labels
 
-from kangaroo.corpus import CORPUS_PATH, load_cases, load_golden_labels
 from kangaroo.policy import load_policy, parse_policy
 
 METADATA_KEYS = {

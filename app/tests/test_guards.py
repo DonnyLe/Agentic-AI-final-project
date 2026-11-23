@@ -1,6 +1,6 @@
 import pytest
 
-from kangaroo import guards
+from kangaroo.ai.agents import guards
 from kangaroo.models.agent_io import AdjudicatorOutput
 from kangaroo.models.decision import Restrictiveness, Verdict
 from kangaroo.models.golden import GoldenLabel, matches_golden, normalize_label

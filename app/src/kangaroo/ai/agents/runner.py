@@ -1,17 +1,20 @@
 """Runs cases through the graph in the background and records everything."""
 
 import asyncio
+import logging
 import uuid
 
 from langgraph.graph.state import CompiledStateGraph
 
+from kangaroo.ai.agents.graph import stream_run
 from kangaroo.db.records import StoredCase
 from kangaroo.db.repository import Repository
-from kangaroo.graph import stream_run
 from kangaroo.models.decision import Decision
 from kangaroo.models.golden import matches_golden
 from kangaroo.models.trace import TraceEvent, TraceKind
 from kangaroo.policy import Policy
+
+logger = logging.getLogger(__name__)
 
 
 class CaseNotFoundError(LookupError):
@@ -62,6 +65,7 @@ class RunService:
             golden_label=stored.golden.final if stored.golden else None,
         )
 
+        logger.info("run %s started for case %s", evaluation_id, case_id)
         self._waiting_or_running += 1
         task = asyncio.create_task(self._run(evaluation_id, stored))
         self._tasks.add(task)
@@ -70,7 +74,7 @@ class RunService:
         return evaluation_id
 
     async def wait_all(self) -> None:
-        """Wait for every background run (used by tests and the eval CLI)."""
+        """Wait for every background run (used by tests and on shutdown)."""
         while self._tasks:
             await asyncio.gather(*list(self._tasks))
 
@@ -85,7 +89,8 @@ class RunService:
                         await self.repo.append_trace(evaluation_id, seq, item)
                     else:
                         await self._finish(evaluation_id, stored, item)
-        except Exception as error:  # noqa: BLE001 - a crashed run must be recorded, not lost
+        except Exception as error:
+            logger.exception("run %s crashed", evaluation_id)
             message = f"{type(error).__name__}: {error}"
             await self.repo.append_trace(
                 evaluation_id,
@@ -101,3 +106,10 @@ class RunService:
     ) -> None:
         golden_match = matches_golden(decision, stored.golden) if stored.golden else None
         await self.repo.complete_evaluation(evaluation_id, decision, golden_match)
+        logger.info(
+            "run %s finished case %s: %s (golden match: %s)",
+            evaluation_id,
+            stored.case.id,
+            decision.label,
+            golden_match,
+        )

@@ -6,18 +6,19 @@ from pathlib import Path
 
 import httpx
 import pytest
+from corpus import load_cases, load_golden_labels
 from fakes import ScriptedModels, structured
 from fastapi import FastAPI
 from pydantic import SecretStr
 
-from kangaroo.api.app import Services, create_app
+from kangaroo.ai.agents.graph import build_graph
+from kangaroo.ai.agents.runner import RunService, TooManyRunsError
+from kangaroo.api.services import Services
+from kangaroo.app import create_app
 from kangaroo.config import Role, Settings
-from kangaroo.corpus import load_cases, load_golden_labels
 from kangaroo.db.memory import InMemoryRepository
-from kangaroo.graph import build_graph
 from kangaroo.models.agent_io import AdjudicatorOutput, IntakeResult, SupervisorDecision
 from kangaroo.policy import load_policy
-from kangaroo.runs import RunService, TooManyRunsError
 
 POLICY = load_policy()
 CASES = {case.id: case for case in load_cases()}
@@ -176,6 +177,15 @@ async def test_unknown_run_and_case(client: httpx.AsyncClient) -> None:
     batch = await client.post("/api/batch-eval", json={"case_ids": ["K-999"]})
 
     assert batch.status_code == 404
+
+
+async def test_scalar_docs(client: httpx.AsyncClient) -> None:
+    docs = await client.get("/docs")
+    spec = (await client.get("/openapi.json")).json()
+
+    assert docs.status_code == 200
+    assert "/openapi.json" in docs.text
+    assert "/api/runs" in spec["paths"]
 
 
 async def test_policy(client: httpx.AsyncClient) -> None:

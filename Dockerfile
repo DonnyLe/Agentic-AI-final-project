@@ -25,4 +25,4 @@ ENV PATH="/srv/app/.venv/bin:$PATH" PORT=8000
 EXPOSE 8000
 
 # Migrations are idempotent, so running them on every start is safe.
-CMD ["sh", "-c", "alembic upgrade head && uvicorn kangaroo.api.app:app --host 0.0.0.0 --port $PORT"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn kangaroo.app:app --host 0.0.0.0 --port $PORT"]

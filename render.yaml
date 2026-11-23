@@ -6,6 +6,9 @@ services:
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile
+    # Deploy every push to main, but only once the GitHub Actions checks pass.
+    branch: main
+    autoDeployTrigger: checksPass
     healthCheckPath: /api/health
     envVars:
       - key: OPENROUTER_API_KEY

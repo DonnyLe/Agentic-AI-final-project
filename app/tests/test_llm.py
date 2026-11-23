@@ -5,7 +5,7 @@ from fakes import ScriptedChatModel, structured, tool_reply
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel
 
-from kangaroo.llm import StructuredOutputError, parse_json_reply, structured_call
+from kangaroo.ai.llm import StructuredOutputError, parse_json_reply, structured_call
 
 
 class Answer(BaseModel):
