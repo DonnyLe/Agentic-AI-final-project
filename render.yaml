@@ -17,7 +17,13 @@ services:
         sync: false
       - key: KANGAROO_ACCESS_TOKEN
         sync: false
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
       - key: LLM_BASE_URL
         value: https://openrouter.ai/api/v1
       - key: KANGAROO_MODEL_DEFAULT
         value: nvidia/nemotron-3.5-lightning:free
+      - key: KANGAROO_LOG_LEVEL
+        value: INFO
