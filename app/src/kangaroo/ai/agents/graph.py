@@ -7,8 +7,9 @@ intake ─┬─ T3/T4 ───────────────────
                                 ├─ adjudicate ─► adjudicator (+ guards)
                                 └─ escalate ───► needs_review
 
-Each node streams TraceEvents through LangGraph's custom stream. Any node that
-fails ends the run with a `needs_review` decision instead of a guess.
+Each node streams TraceEvents through LangGraph's custom stream. A node that
+fails three times in a row ends the run with a `needs_review` decision instead of
+a guess, and so does running out of evidence rounds while evidence is still missing.
 """
 
 from collections.abc import AsyncIterator

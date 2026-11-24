@@ -4,7 +4,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from kangaroo.ai.agents import guards
 from kangaroo.ai.agents.prompts import UNTRUSTED, render_case, rules_text
-from kangaroo.ai.agents.state import Node, RunState, Update, emit, guarded
+from kangaroo.ai.agents.state import Node, RunState, Update, add_flag, emit, guarded
 from kangaroo.ai.llm import ModelProvider, structured_call
 from kangaroo.config import Role
 from kangaroo.models.agent_io import EvidenceFinding, IntakeResult, SupervisorDecision
@@ -62,14 +62,21 @@ def make_supervisor(models: ModelProvider, policy: Policy, max_rounds: int) -> N
             ),
         )
         note = ""
+        flags = state.flags
 
         if decision.next_step == "gather_evidence" and state.rounds >= max_rounds:
-            note = f"Evidence round limit ({max_rounds}) reached; adjudicating with what we have."
+            # Evidence still wanted after the last round means it's missing: pause for a human.
+            note = f"Evidence round limit ({max_rounds}) reached with evidence still missing."
+            wanted = ", ".join(task.value for task in decision.evidence_tasks)
+            reason = f"Evidence still missing after {max_rounds} rounds ({wanted}). "
+            reason += decision.reason
+            decision = decision.model_copy(
+                update={"next_step": "escalate", "evidence_tasks": [], "reason": reason}
+            )
+            flags = add_flag(flags, guards.FLAG_EVIDENCE_INCOMPLETE)
         elif decision.next_step == "gather_evidence" and not decision.evidence_tasks:
             note = "No evidence tasks given; adjudicating."
-
-        if note:
-            decision = decision.model_copy(update={"next_step": "adjudicate", "evidence_tasks": []})
+            decision = decision.model_copy(update={"next_step": "adjudicate"})
 
         emit(
             "supervisor",
@@ -80,7 +87,7 @@ def make_supervisor(models: ModelProvider, policy: Policy, max_rounds: int) -> N
             round=state.rounds,
         )
 
-        return {"supervisor": decision}
+        return {"supervisor": decision, "flags": flags}
 
     return supervisor
 

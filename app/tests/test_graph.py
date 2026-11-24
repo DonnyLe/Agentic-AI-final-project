@@ -2,10 +2,15 @@
 
 from corpus import load_cases
 from fakes import ScriptedModels, structured, tool_reply
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
 from kangaroo.ai.agents.graph import build_graph, stream_run
-from kangaroo.ai.agents.guards import FLAG_POSSIBLE_INJECTION
+from kangaroo.ai.agents.guards import (
+    FLAG_AGENT_ERROR,
+    FLAG_EVIDENCE_INCOMPLETE,
+    FLAG_POSSIBLE_INJECTION,
+)
+from kangaroo.ai.agents.state import MAX_ATTEMPTS
 from kangaroo.config import Role
 from kangaroo.models.agent_io import (
     AdjudicatorOutput,
@@ -45,8 +50,11 @@ def verdict(kind: str, rules: list[str] | None = None) -> AIMessage:
     )
 
 
-def report(*tasks: EvidenceTask) -> AIMessage:
-    findings = [EvidenceFinding(task=t, status="confirmed", summary="found it") for t in tasks]
+def report(*tasks: EvidenceTask, excerpts: list[str] | None = None) -> AIMessage:
+    findings = [
+        EvidenceFinding(task=t, status="confirmed", summary="found it", excerpts=excerpts or [])
+        for t in tasks
+    ]
 
     return structured(EvidenceReport(findings=findings))
 
@@ -98,7 +106,7 @@ async def test_t2_with_a_blamed_library_checks_duplicates_and_the_dependency() -
                 tool_reply("search_tickets", {"query": "refresh token invalid_signature"}),
                 tool_reply("verify_dependency", {"package": "jwt-verify-lite"}),
                 AIMessage(content="done"),
-                report(*tasks),
+                report(*tasks, excerpts=["jwt-verify-lite 4.2.0: version exists"]),
             ],
             Role.ADJUDICATOR: [verdict("violation", ["R2.3"])],
         }
@@ -113,7 +121,40 @@ async def test_t2_with_a_blamed_library_checks_duplicates_and_the_dependency() -
     assert decision.proposed_action.requires_approval
     assert routes(events) == ["gather_evidence", "adjudicate"]
     assert tool_calls == ["search_tickets", "verify_dependency"]
-    assert "jwt-verify-lite 4.2.0" in adjudicator_prompt
+    assert "> jwt-verify-lite 4.2.0: version exists" in adjudicator_prompt
+    # Raw tool output stays with the evidence agent; the adjudicator only gets findings.
+    assert "upstream_issues" not in adjudicator_prompt
+
+
+async def test_tool_calls_in_one_reply_run_together_and_repeats_are_skipped() -> None:
+    search = {"query": "refresh token invalid_signature"}
+    task = [EvidenceTask.DUPLICATE_SEARCH, EvidenceTask.DEPENDENCY_CHECK]
+    both = AIMessage(
+        content="",
+        tool_calls=[
+            {"name": "search_tickets", "args": search, "id": "a"},
+            {"name": "verify_dependency", "args": {"package": "jwt-verify-lite"}, "id": "b"},
+            {"name": "search_tickets", "args": search, "id": "c"},
+        ],
+    )
+    models = ScriptedModels(
+        {
+            Role.INTAKE: [intake("T2")],
+            Role.SUPERVISOR: [route("gather_evidence", task), route("adjudicate")],
+            Role.EVIDENCE: [both, AIMessage(content="done"), report(*task)],
+            Role.ADJUDICATOR: [verdict("violation", ["R2.3"])],
+        }
+    )
+
+    _, events = await run(models, CASES["K-054"])
+
+    summary_prompt = models.models[Role.EVIDENCE].calls[-1]
+    tool_ids = [m.tool_call_id for m in summary_prompt if isinstance(m, ToolMessage)]
+    calls = [e.message for e in events if e.kind == TraceKind.TOOL_CALL]
+
+    assert tool_ids == ["a", "b", "c"]
+    assert calls == ["search_tickets", "verify_dependency", "search_tickets (repeat)"]
+    assert sum(e.kind == TraceKind.TOOL_RESULT for e in events) == 2
 
 
 async def test_t2_without_a_library_skips_the_dependency_check_and_flags_injection() -> None:
@@ -186,23 +227,39 @@ async def test_repair_that_works_is_accepted() -> None:
     assert decision.label == "T1 R1.2"
 
 
-async def test_model_failure_ends_in_needs_review() -> None:
+async def test_model_failure_is_retried_then_ends_in_needs_review() -> None:
+    # Each attempt is a structured call plus one nudge.
+    refusals = [AIMessage(content="I can't"), AIMessage(content="still no")] * MAX_ATTEMPTS
     models = ScriptedModels(
-        {
-            Role.INTAKE: [AIMessage(content="I can't"), AIMessage(content="still no")],
-            Role.SUPERVISOR: [],
-            Role.EVIDENCE: [],
-            Role.ADJUDICATOR: [],
-        }
+        {Role.INTAKE: refusals, Role.SUPERVISOR: [], Role.EVIDENCE: [], Role.ADJUDICATOR: []}
     )
 
     decision, events = await run(models, CASES["K-002"])
 
     assert decision.verdict == Verdict.NEEDS_REVIEW
-    assert events[-1].kind == TraceKind.ERROR
+    assert FLAG_AGENT_ERROR in decision.flags
+    assert [e.kind for e in events] == [TraceKind.ERROR] * MAX_ATTEMPTS
+    assert len(models.models[Role.INTAKE].calls) == 2 * MAX_ATTEMPTS
 
 
-async def test_evidence_rounds_are_capped() -> None:
+async def test_one_failed_attempt_is_retried() -> None:
+    models = ScriptedModels(
+        {
+            Role.INTAKE: [intake("T1")],
+            Role.SUPERVISOR: [*[AIMessage(content="hmm")] * 2, route("adjudicate")],
+            Role.EVIDENCE: [],
+            Role.ADJUDICATOR: [verdict("violation", ["R1.1"])],
+        }
+    )
+
+    decision, events = await run(models, CASES["K-012"])
+
+    assert decision.label == "T1 R1.1"
+    assert FLAG_AGENT_ERROR not in decision.flags
+    assert sum(e.kind == TraceKind.ERROR for e in events) == 1
+
+
+async def test_evidence_still_wanted_after_the_last_round_escalates() -> None:
     task = [EvidenceTask.DUPLICATE_SEARCH]
     one_round = [AIMessage(content="nothing to call"), report(*task)]
     models = ScriptedModels(
@@ -210,14 +267,17 @@ async def test_evidence_rounds_are_capped() -> None:
             Role.INTAKE: [intake("T2")],
             Role.SUPERVISOR: [route("gather_evidence", task)] * 3,
             Role.EVIDENCE: one_round * 2,
-            Role.ADJUDICATOR: [verdict("no_violation")],
+            Role.ADJUDICATOR: [],
         }
     )
 
     decision, events = await run(models, CASES["K-051"])
 
-    assert decision.label == "none"
-    assert routes(events) == ["gather_evidence", "gather_evidence", "adjudicate"]
+    assert decision.verdict == Verdict.NEEDS_REVIEW
+    assert FLAG_EVIDENCE_INCOMPLETE in decision.flags
+    assert "duplicate_search" in decision.rationale
+    assert routes(events) == ["gather_evidence", "gather_evidence", "escalate"]
+    assert not models.models[Role.ADJUDICATOR].calls
 
 
 async def test_escalation() -> None:

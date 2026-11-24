@@ -26,6 +26,7 @@ const FLAG_TEXT = new Map([
   ["possible_injection", "Possible prompt injection in the transcript or evidence"],
   ["approver_is_proposer", "An approver is also a proposer of this action"],
   ["agent_error", "An agent failed during this run"],
+  ["evidence_incomplete", "Required evidence was still missing after the last evidence round"],
 ]);
 
 type Finding = { task: string; status: string; summary: string; sources: string[] };

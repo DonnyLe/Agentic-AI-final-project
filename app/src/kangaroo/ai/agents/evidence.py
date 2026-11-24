@@ -1,9 +1,10 @@
 """Evidence agent: calls the evidence tools for the supervisor's tasks, then reports findings."""
 
+import asyncio
 import json
 from typing import Any
 
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolCall, ToolMessage
 
 from kangaroo.ai.agents import guards
 from kangaroo.ai.agents.prompts import UNTRUSTED, render_case
@@ -45,7 +46,9 @@ def findings_messages(
         *gathered,
         HumanMessage(
             f"Summarize the evidence as one finding per task ({tasks}). "
-            "Use status confirmed / possible / not_found / unresolved."
+            "Use status confirmed / possible / not_found / unresolved. List the sources, and "
+            "put the exact lines from the tool results that the decision depends on in "
+            "excerpts; only the findings go to the adjudicator, not the raw tool results."
         ),
     ]
 
@@ -58,7 +61,6 @@ def make_evidence(models: ModelProvider, policy: Policy) -> Node:
         tools = {tool.name: tool for tool in build_evidence_tools(state.case)}
         bound = with_retries(model.bind_tools(list(tools.values())))
         messages: list[BaseMessage] = evidence_messages(state.case, state.supervisor)
-        log = list(state.evidence_log)
         flags = state.flags
         seen: dict[str, str] = {}
 
@@ -69,9 +71,21 @@ def make_evidence(models: ModelProvider, policy: Policy) -> Node:
             if not reply.tool_calls:
                 break
 
-            for call in reply.tool_calls:
-                key = f"{call['name']}:{json.dumps(call['args'], sort_keys=True)}"
+            # Run this reply's new calls together; repeats get a note instead of a rerun.
+            keys = [_call_key(call) for call in reply.tool_calls]
+            fresh: dict[str, ToolCall] = {}
 
+            for call, key in zip(reply.tool_calls, keys, strict=True):
+                if key not in seen and key not in fresh:
+                    fresh[key] = call
+                    emit("evidence", TraceKind.TOOL_CALL, call["name"], args=call["args"])
+
+            outputs = await asyncio.gather(
+                *(_run_tool(tools, call["name"], call["args"]) for call in fresh.values())
+            )
+            results = dict(zip(fresh, outputs, strict=True))
+
+            for call, key in zip(reply.tool_calls, keys, strict=True):
                 if key in seen:
                     note = "You already made this exact call; the result is unchanged. Move on."
                     emit(
@@ -83,14 +97,13 @@ def make_evidence(models: ModelProvider, policy: Policy) -> Node:
                     messages.append(ToolMessage(content=note, tool_call_id=call["id"]))
                     continue
 
-                output = await _run_tool(tools, call["name"], call["args"])
+                output = results[key]
                 seen[key] = output
                 injected = _injection_in(output)
 
                 if injected:
                     flags = add_flag(flags, guards.FLAG_POSSIBLE_INJECTION)
 
-                emit("evidence", TraceKind.TOOL_CALL, call["name"], args=call["args"])
                 emit(
                     "evidence",
                     TraceKind.TOOL_RESULT,
@@ -100,7 +113,6 @@ def make_evidence(models: ModelProvider, policy: Policy) -> Node:
                     possible_injection=injected,
                 )
                 messages.append(ToolMessage(content=output, tool_call_id=call["id"]))
-                log.append(f"{call['name']}({json.dumps(call['args'])}) -> {output[:LOG_LIMIT]}")
 
         report = await structured_call(
             model, EvidenceReport, findings_messages(messages, state.supervisor)
@@ -115,12 +127,15 @@ def make_evidence(models: ModelProvider, policy: Policy) -> Node:
 
         return {
             "findings": [*state.findings, *report.findings],
-            "evidence_log": log,
             "rounds": state.rounds + 1,
             "flags": flags,
         }
 
     return evidence
+
+
+def _call_key(call: ToolCall) -> str:
+    return f"{call['name']}:{json.dumps(call['args'], sort_keys=True)}"
 
 
 async def _run_tool(tools: dict[str, Any], name: str, args: dict[str, Any]) -> str:
