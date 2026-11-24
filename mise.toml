@@ -1,0 +1,116 @@
+# Project tasks. List them with `mise tasks`, run one with `mise run <name>`.
+# db:dev:* tasks read app/.env (docker Postgres). db:prod:* tasks set KANGAROO_ENV=prod,
+# so they read app/.env.prod (the Neon database Render uses).
+
+[tools]
+# Same versions as the Dockerfile. uv installs Python itself (app/pyproject.toml).
+uv = "0.12.16"
+bun = "1.4.2"
+node = "22"
+
+[tasks."install:api"]
+description = "Install backend dependencies"
+dir = "app"
+run = "uv sync"
+
+[tasks."install:web"]
+description = "Install frontend dependencies"
+dir = "frontend"
+run = "bun install"
+
+[tasks.install]
+description = "Install backend and frontend dependencies"
+depends = ["install:api", "install:web"]
+
+# --- Run --------------------------------------------------------------------
+
+[tasks."db:up"]
+description = "Start the local Postgres"
+run = "docker compose up -d --wait"
+
+[tasks."db:down"]
+description = "Stop the local Postgres"
+run = "docker compose down"
+
+[tasks."dev:api"]
+description = "API on :8000 with reload"
+dir = "app"
+run = "uv run uvicorn kangaroo.app:app --port 8000 --reload"
+
+[tasks."dev:web"]
+description = "UI on :5173, proxying /api to :8000"
+dir = "frontend"
+run = "bun run dev"
+
+[tasks.dev]
+description = "API and UI together"
+depends = ["dev:api", "dev:web"]
+
+# --- Database: dev (local Postgres) -----------------------------------------
+
+[tasks."db:dev:migrate:up"]
+description = "Apply pending migrations to the local database"
+dir = "app"
+run = "uv run alembic upgrade head"
+
+[tasks."db:dev:migrate:status"]
+description = "Show the local database's revision and check it matches the models"
+dir = "app"
+run = ["uv run alembic current", "uv run alembic heads", "uv run alembic check"]
+
+# --- Database: prod (Neon) --------------------------------------------------
+
+[tasks."db:prod:migrate:up"]
+description = "Apply pending migrations to Neon"
+dir = "app"
+env = { KANGAROO_ENV = "prod" }
+run = "uv run alembic upgrade head"
+
+[tasks."db:prod:migrate:status"]
+description = "Show Neon's revision and check it matches the models"
+dir = "app"
+env = { KANGAROO_ENV = "prod" }
+run = ["uv run alembic current", "uv run alembic heads", "uv run alembic check"]
+
+# --- Quality ----------------------------------------------------------------
+
+[tasks.lint]
+description = "Lint backend and frontend"
+run = ["cd app && uv run ruff check", "cd frontend && bun run lint && bun run typecheck"]
+
+[tasks.format]
+description = "Format backend and frontend"
+run = ["cd app && uv run ruff format", "cd frontend && bun run format"]
+
+[tasks.fix]
+description = "Apply lint autofixes, then format"
+run = [
+  "cd app && uv run ruff check --fix",
+  "cd frontend && bun run lint:fix",
+  { task = "format" },
+]
+
+[tasks.test]
+description = "Run backend tests"
+dir = "app"
+run = "uv run pytest"
+
+[tasks."check:api"]
+description = "Backend CI checks: ruff lint, ruff format check, tests"
+dir = "app"
+run = ["uv run ruff check", "uv run ruff format --check", "uv run pytest"]
+
+[tasks."check:web"]
+description = "Frontend CI checks: typecheck, oxlint, oxfmt check"
+dir = "frontend"
+run = "bun run check"
+
+[tasks.check]
+description = "Everything CI runs, for both apps"
+depends = ["check:api", "check:web"]
+
+# --- Deploy -----------------------------------------------------------------
+
+[tasks."docker:build"]
+description = "Build the Render image locally"
+run = "docker build -t kangaroo ."

@@ -17,7 +17,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # Existing rows get a placeholder; re-run `python -m kangaroo.seed` to fill real tiers.
+    # Existing rows get a placeholder; re-run `python -m kangaroo.scripts.seed` to fill real tiers.
     op.add_column(
         "golden_labels",
         sa.Column("action_tier", sa.String(length=4), nullable=False, server_default=""),

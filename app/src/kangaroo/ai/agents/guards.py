@@ -15,6 +15,7 @@ from kangaroo.policy import Policy
 FLAG_POSSIBLE_INJECTION = "possible_injection"
 FLAG_APPROVER_IS_PROPOSER = "approver_is_proposer"
 FLAG_AGENT_ERROR = "agent_error"
+FLAG_EVIDENCE_INCOMPLETE = "evidence_incomplete"
 
 _ENGINEER_APPROVER = "an engineer who is not a proposer"
 

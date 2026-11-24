@@ -9,10 +9,10 @@ import uuid
 from collections.abc import AsyncIterator
 
 import pytest
+from corpus import load_cases
 from sqlalchemy import delete
 
 from kangaroo.config import get_settings
-from kangaroo.corpus import load_cases
 from kangaroo.db.memory import InMemoryRepository
 from kangaroo.db.postgres import PostgresRepository, make_engine
 from kangaroo.db.repository import Repository

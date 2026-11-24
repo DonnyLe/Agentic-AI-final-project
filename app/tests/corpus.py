@@ -1,4 +1,4 @@
-"""Load the FP2 corpus and golden labels from data/."""
+"""Test fixtures: load the FP2 corpus and golden labels from the repo's data/ folder."""
 
 import csv
 import json

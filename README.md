@@ -30,7 +30,6 @@ cd app
 cp .env.example .env        # fill in OPENROUTER_API_KEY; DATABASE_URL already points at local Postgres
 uv sync
 uv run alembic upgrade head
-uv run python -m kangaroo.seed   # loads data/corpus.jsonl and data/golden.csv
 
 # Frontend
 cd ../frontend
@@ -41,7 +40,7 @@ bun install
 
 ```bash
 # Terminal 1: API on :8000
-cd app && uv run uvicorn kangaroo.api.app:app --port 8000 --reload
+cd app && uv run uvicorn kangaroo.app:app --port 8000 --reload
 
 # Terminal 2: UI on :5173 (proxies /api to :8000)
 cd frontend && bun run dev
@@ -57,7 +56,6 @@ gitignored.
 
 ```bash
 KANGAROO_ENV=prod uv run alembic upgrade head      # migrate Neon
-KANGAROO_ENV=prod uv run python -m kangaroo.seed   # seed Neon
 ```
 
 ## Tests and checks
@@ -67,20 +65,39 @@ cd app && uv run pytest && uv run ruff check && uv run ruff format --check
 cd frontend && bun run check
 ```
 
-## Alpha evaluation
+## mise tasks
 
-With the API running, this runs the 11 golden alpha cases and writes a markdown table
-(see `docs/alpha_eval.md`):
+`mise.toml` wraps the commands above. Run `mise tasks` for the full list.
 
 ```bash
-cd app && uv run python -m kangaroo.eval
-uv run python -m kangaroo.eval --base-url https://<deployed-url> --token <token>
+mise install                  # uv, bun and node at the pinned versions
+mise run install              # uv sync + bun install
+mise run db:up                # local Postgres
+mise run db:dev:migrate:up    # alembic upgrade head
+mise run dev                  # API on :8000 and UI on :5173
+mise run check                # what CI runs: lint, format check, typecheck, tests
+mise run fix                  # lint autofixes + format
+```
+
+`db:dev:*` tasks use the local database (`app/.env`). `db:prod:*` tasks use Neon (they
+set `KANGAROO_ENV=prod`, so they read `app/.env.prod`):
+
+```bash
+mise run db:prod:migrate:status   # current revision, latest revision, model drift check
+mise run db:prod:migrate:up       # alembic upgrade head
 ```
 
 ## Deploy (Render)
 
-`render.yaml` describes one Docker web service built from `Dockerfile`: Bun builds the
-SPA, and FastAPI serves it together with `/api`. Migrations run on container start.
-Create the service from the blueprint, then set `OPENROUTER_API_KEY`, `DATABASE_URL`
-(the Neon URL) and optionally `KANGAROO_ACCESS_TOKEN` in the Render dashboard. With
-an access token set, the UI asks for it once and keeps it in the browser.
+`render.yaml` is a Render blueprint for one Docker web service built from
+`Dockerfile`. Bun builds the SPA, and FastAPI serves it together with `/api`.
+Migrations also run on container start, so a deploy never boots against an old schema.
+
+1. Push the branch, then in Render choose **New > Blueprint** and pick this repo.
+2. When prompted, enter `OPENROUTER_API_KEY`, `DATABASE_URL` (the Neon URL from
+   `app/.env.prod`) and optionally `KANGAROO_ACCESS_TOKEN`. With a token set, the UI
+   asks for it once and keeps it in the browser.
+3. Before the first deploy, run `mise run db:prod:migrate:status` and, if needed,
+   `db:prod:migrate:up`.
+
+The free plan sleeps after 15 minutes idle, so the first request after that is slow.

@@ -1,10 +1,10 @@
 import json
 
 import pytest
+from corpus import load_cases
 
-from kangaroo.corpus import load_cases
+from kangaroo.ai.tools.evidence import EvidenceView, build_evidence_tools, find_injection
 from kangaroo.models.case import Case
-from kangaroo.tools.evidence import EvidenceView, build_evidence_tools, find_injection
 
 CASES = {case.id: case for case in load_cases()}
 

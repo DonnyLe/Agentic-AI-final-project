@@ -72,6 +72,13 @@ class EvidenceFinding(BaseModel):
     sources: list[str] = Field(
         default_factory=list, description="Evidence keys or ticket IDs the summary relies on."
     )
+    excerpts: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Short verbatim quotes from the tool results that back the summary (a version, "
+            "date, ticket title or status). Quote only what the decision needs."
+        ),
+    )
 
 
 class EvidenceReport(BaseModel):
