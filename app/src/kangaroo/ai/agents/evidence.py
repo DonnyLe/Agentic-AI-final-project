@@ -117,6 +117,7 @@ def make_evidence(models: ModelProvider, policy: Policy) -> Node:
             "findings": [*state.findings, *report.findings],
             "evidence_log": log,
             "rounds": state.rounds + 1,
+            "evidence_request": None,
             "flags": flags,
         }
 

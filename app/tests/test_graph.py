@@ -5,7 +5,7 @@ from fakes import ScriptedModels, structured, tool_reply
 from langchain_core.messages import AIMessage
 
 from kangaroo.ai.agents.graph import build_graph, stream_run
-from kangaroo.ai.agents.guards import FLAG_POSSIBLE_INJECTION
+from kangaroo.ai.agents.guards import FLAG_EVIDENCE_INCOMPLETE, FLAG_POSSIBLE_INJECTION
 from kangaroo.config import Role
 from kangaroo.models.agent_io import (
     AdjudicatorOutput,
@@ -45,6 +45,14 @@ def verdict(kind: str, rules: list[str] | None = None) -> AIMessage:
     )
 
 
+def needs_evidence(*tasks: EvidenceTask) -> AIMessage:
+    return structured(
+        AdjudicatorOutput(
+            verdict="needs_evidence", missing_evidence=list(tasks), rationale="need the ticket"
+        )
+    )
+
+
 def report(*tasks: EvidenceTask) -> AIMessage:
     findings = [EvidenceFinding(task=t, status="confirmed", summary="found it") for t in tasks]
 
@@ -67,7 +75,12 @@ async def run(models: ScriptedModels, case: Case) -> tuple[Decision, list[TraceE
 
 
 def routes(events: list[TraceEvent]) -> list[str]:
-    return [e.payload.get("next_step", "") for e in events if e.kind == TraceKind.ROUTE]
+    """The supervisor's routing choices, in order."""
+    return [
+        e.payload["next_step"]
+        for e in events
+        if e.kind == TraceKind.ROUTE and e.node == "supervisor"
+    ]
 
 
 async def test_t1_goes_straight_to_the_adjudicator() -> None:
@@ -233,3 +246,93 @@ async def test_escalation() -> None:
     decision, _ = await run(models, CASES["K-051"])
 
     assert decision.verdict == Verdict.NEEDS_REVIEW
+
+
+async def test_intake_gets_the_tier_table_but_not_the_rules() -> None:
+    models = ScriptedModels(
+        {
+            Role.INTAKE: [intake("T1")],
+            Role.SUPERVISOR: [route("adjudicate")],
+            Role.EVIDENCE: [],
+            Role.ADJUDICATOR: [verdict("no_violation")],
+        }
+    )
+
+    await run(models, CASES["K-012"])
+
+    system_prompt = models.models[Role.INTAKE].calls[0][0].content
+
+    assert "T2 · Ticket" in system_prompt
+    assert "T4 · Code change" in system_prompt
+    assert "R2.3" not in system_prompt
+
+
+async def test_adjudicator_can_send_the_case_back_for_evidence() -> None:
+    task = EvidenceTask.TICKET_DETAILS
+    models = ScriptedModels(
+        {
+            Role.INTAKE: [intake("T2")],
+            Role.SUPERVISOR: [
+                route("adjudicate"),
+                route("gather_evidence", [task]),
+                route("adjudicate"),
+            ],
+            Role.EVIDENCE: [AIMessage(content="nothing to call"), report(task)],
+            Role.ADJUDICATOR: [needs_evidence(task), verdict("violation", ["R2.2"])],
+        }
+    )
+
+    decision, events = await run(models, CASES["K-109"])
+
+    supervisor_prompts = [call[-1].content for call in models.models[Role.SUPERVISOR].calls]
+    sent_back = [e for e in events if e.kind == TraceKind.ROUTE and e.node == "adjudicator"]
+
+    assert decision.label == "T2 R2.2"
+    assert routes(events) == ["adjudicate", "gather_evidence", "adjudicate"]
+    assert sent_back[0].payload["evidence_tasks"] == ["ticket_details"]
+    assert "asked for: ticket_details" in supervisor_prompts[1]
+    assert "asked for" not in supervisor_prompts[2]  # cleared once the evidence ran
+    assert FLAG_EVIDENCE_INCOMPLETE not in decision.flags
+
+
+async def test_adjudicator_can_only_send_the_case_back_once() -> None:
+    task = EvidenceTask.TICKET_DETAILS
+    models = ScriptedModels(
+        {
+            Role.INTAKE: [intake("T2")],
+            Role.SUPERVISOR: [
+                route("adjudicate"),
+                route("gather_evidence", [task]),
+                route("adjudicate"),
+            ],
+            Role.EVIDENCE: [AIMessage(content="nothing to call"), report(task)],
+            Role.ADJUDICATOR: [needs_evidence(task), needs_evidence(task)],
+        }
+    )
+
+    decision, _ = await run(models, CASES["K-109"])
+
+    second_prompt = models.models[Role.ADJUDICATOR].calls[1][-1].content
+
+    assert decision.verdict == Verdict.NEEDS_REVIEW
+    assert FLAG_EVIDENCE_INCOMPLETE in decision.flags
+    assert "don't answer needs_evidence" in second_prompt
+
+
+async def test_no_evidence_requests_once_the_rounds_are_used_up() -> None:
+    task = [EvidenceTask.DUPLICATE_SEARCH]
+    one_round = [AIMessage(content="nothing to call"), report(*task)]
+    models = ScriptedModels(
+        {
+            Role.INTAKE: [intake("T2")],
+            Role.SUPERVISOR: [route("gather_evidence", task)] * 3,
+            Role.EVIDENCE: one_round * 2,
+            Role.ADJUDICATOR: [needs_evidence(EvidenceTask.TICKET_DETAILS)],
+        }
+    )
+
+    decision, _ = await run(models, CASES["K-051"])
+
+    assert decision.verdict == Verdict.NEEDS_REVIEW
+    assert FLAG_EVIDENCE_INCOMPLETE in decision.flags
+    assert len(models.models[Role.SUPERVISOR].calls) == 3

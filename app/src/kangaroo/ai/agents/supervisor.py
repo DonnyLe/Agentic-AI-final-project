@@ -3,8 +3,8 @@
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from kangaroo.ai.agents import guards
-from kangaroo.ai.agents.prompts import UNTRUSTED, render_case, rules_text
-from kangaroo.ai.agents.state import Node, RunState, Update, emit, guarded
+from kangaroo.ai.agents.prompts import EVIDENCE_TASKS, UNTRUSTED, render_case, rules_text
+from kangaroo.ai.agents.state import EvidenceRequest, Node, RunState, Update, emit, guarded
 from kangaroo.ai.llm import ModelProvider, structured_call
 from kangaroo.config import Role
 from kangaroo.models.agent_io import EvidenceFinding, IntakeResult, SupervisorDecision
@@ -20,19 +20,22 @@ def supervisor_messages(
     findings: list[EvidenceFinding],
     rounds: int,
     max_rounds: int,
+    request: EvidenceRequest | None = None,
 ) -> list[BaseMessage]:
     gathered = "\n".join(f"- {f.task}: {f.status}. {f.summary}" for f in findings) or "none yet"
+    asked = (
+        "\n\nThe adjudicator couldn't rule yet and asked for: "
+        f"{', '.join(task.value for task in request.tasks)}. Its reason: {request.reason}\n"
+        "Gather that evidence unless the findings above already cover it."
+        if request
+        else ""
+    )
 
     return [
         SystemMessage(
             "You are the supervisor of Kangaroo. Decide the next step for this case: gather "
             "only the evidence this case needs, adjudicate once the evidence is enough, or "
-            "escalate if it can't be settled. Evidence tasks:\n"
-            "- duplicate_search: search open tickets for a matching defect\n"
-            "- ticket_details: read a specific ticket\n"
-            "- dependency_check: registry and upstream-issue lookups for a blamed library\n"
-            "- roster_check: roster, owners and recorded approvals\n"
-            "- transcript_check: re-read specific transcript segments\n"
+            f"escalate if it can't be settled. Evidence tasks:\n{EVIDENCE_TASKS}\n"
             "T1 records are settled from the transcript alone, so for T1 choose adjudicate "
             "unless a specific segment must be re-read. Ask for dependency_check only when "
             "someone blames a third-party library or service. Escalate only when required "
@@ -45,7 +48,7 @@ def supervisor_messages(
             f"Intake: {intake.model_dump_json()}\n\n"
             f"Policy rules for {intake.action_class}:\n{rules_text(policy, intake.action_class)}"
             f"\n\nEvidence gathered so far:\n{gathered}\n\n"
-            f"Evidence rounds used: {rounds} of {max_rounds}."
+            f"Evidence rounds used: {rounds} of {max_rounds}.{asked}"
         ),
     ]
 
@@ -58,7 +61,13 @@ def make_supervisor(models: ModelProvider, policy: Policy, max_rounds: int) -> N
             models.for_role(Role.SUPERVISOR),
             SupervisorDecision,
             supervisor_messages(
-                state.case, state.intake, policy, state.findings, state.rounds, max_rounds
+                state.case,
+                state.intake,
+                policy,
+                state.findings,
+                state.rounds,
+                max_rounds,
+                state.evidence_request,
             ),
         )
         note = ""

@@ -9,13 +9,25 @@ from langgraph.config import get_stream_writer
 from pydantic import BaseModel, Field, JsonValue
 
 from kangaroo.ai.agents import guards
-from kangaroo.models.agent_io import EvidenceFinding, IntakeResult, SupervisorDecision
+from kangaroo.models.agent_io import (
+    EvidenceFinding,
+    EvidenceTask,
+    IntakeResult,
+    SupervisorDecision,
+)
 from kangaroo.models.case import Case
 from kangaroo.models.decision import Decision
 from kangaroo.models.trace import TraceEvent, TraceKind
 from kangaroo.policy import Policy
 
 logger = logging.getLogger(__name__)
+
+
+class EvidenceRequest(BaseModel):
+    """Evidence the adjudicator asked for before it could rule."""
+
+    tasks: list[EvidenceTask]
+    reason: str
 
 
 class RunState(BaseModel):
@@ -25,6 +37,9 @@ class RunState(BaseModel):
     findings: list[EvidenceFinding] = Field(default_factory=list)
     evidence_log: list[str] = Field(default_factory=list)
     rounds: int = 0
+    # Set by the adjudicator, cleared once an evidence round has run.
+    evidence_request: EvidenceRequest | None = None
+    evidence_requests: int = 0
     flags: list[str] = Field(default_factory=list)
     decision: Decision | None = None
 

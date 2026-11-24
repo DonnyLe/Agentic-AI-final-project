@@ -66,6 +66,22 @@ def test_policy_has_fourteen_rules_across_four_tiers() -> None:
     assert [rule.id for rule in policy.rules_for({"T1"})] == ["R1.1", "R1.2", "R1.3"]
 
 
+def test_policy_has_a_tier_table() -> None:
+    policy = load_policy()
+
+    assert list(policy.tiers) == ["T1", "T2", "T3", "T4"]
+    assert policy.tiers["T2"].name == "Ticket"
+    assert "link to the existing duplicate" in policy.tiers["T2"].default_action
+    assert "component owner" in policy.tiers["T4"].approval
+
+
+def test_policy_without_tier_table_is_rejected() -> None:
+    rules_only = "**Version 9.9 · effective today**\n\n**R1.1 · Rule.** Text."
+
+    with pytest.raises(ValueError, match="tier table"):
+        parse_policy(rules_only)
+
+
 def test_policy_without_rules_is_rejected() -> None:
     with pytest.raises(ValueError, match="missing"):
         parse_policy("# empty")

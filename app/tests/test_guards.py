@@ -20,6 +20,7 @@ def adjudication(verdict: str, rules: list[str]) -> AdjudicatorOutput:
         ("violation", ["R1.2"], "T2", "is a T1 rule"),
         ("violation", [], "T1", "at least one"),
         ("no_violation", ["R2.3"], "T2", "can't list"),
+        ("needs_evidence", [], "T2", "missing evidence tasks"),
     ],
 )
 def test_bad_adjudications_are_caught(

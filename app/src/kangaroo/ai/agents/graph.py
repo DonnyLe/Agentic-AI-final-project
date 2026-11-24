@@ -3,9 +3,12 @@
 intake ─┬─ T3/T4 ──────────────────────────────► unsupported
         └─ T1/T2 ─► supervisor ─┬─ gather ─► evidence ─┐
                        ▲        │                      │
-                       └────────┼──────────────────────┘
-                                ├─ adjudicate ─► adjudicator (+ guards)
-                                └─ escalate ───► needs_review
+                       ├────────┼──────────────────────┘
+                       │        ├─ adjudicate ─► adjudicator (+ guards) ─► decision
+                       │        │                    │
+                       │        └─ escalate ──► needs_review
+                       │                             │
+                       └──── needs_evidence ─────────┘  (once, while rounds remain)
 
 Each node streams TraceEvents through LangGraph's custom stream. Any node that
 fails ends the run with a `needs_review` decision instead of a guess.
@@ -54,6 +57,10 @@ def after_evidence(state: RunState) -> Literal["supervisor", "__end__"]:
     return END if state.decision is not None else "supervisor"
 
 
+def after_adjudicator(state: RunState) -> Literal["supervisor", "__end__"]:
+    return END if state.decision is not None else "supervisor"
+
+
 def build_graph(
     models: ModelProvider, policy: Policy, max_rounds: int = MAX_EVIDENCE_ROUNDS
 ) -> CompiledStateGraph:
@@ -62,7 +69,7 @@ def build_graph(
     graph.add_node("unsupported", make_unsupported(policy))
     graph.add_node("supervisor", make_supervisor(models, policy, max_rounds))
     graph.add_node("evidence", make_evidence(models, policy))
-    graph.add_node("adjudicator", make_adjudicator(models, policy))
+    graph.add_node("adjudicator", make_adjudicator(models, policy, max_rounds))
     graph.add_node("escalate", make_escalate(policy))
 
     graph.add_edge(START, "intake")
@@ -70,7 +77,7 @@ def build_graph(
     graph.add_conditional_edges("supervisor", after_supervisor)
     graph.add_conditional_edges("evidence", after_evidence)
     graph.add_edge("unsupported", END)
-    graph.add_edge("adjudicator", END)
+    graph.add_conditional_edges("adjudicator", after_adjudicator)
     graph.add_edge("escalate", END)
 
     return graph.compile()
