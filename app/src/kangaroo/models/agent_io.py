@@ -12,11 +12,7 @@ class IntakeResult(BaseModel):
     """What the candidate action is and who proposed it."""
 
     action_class: Tier = Field(
-        description=(
-            "Tier of the candidate action itself: T1 = save an internal note/record; "
-            "T2 = file, link, or mark a defect ticket; T3 = create a calendar hold; "
-            "T4 = modify code, open a PR, or a fix plan."
-        )
+        description="Tier of the candidate action itself, from the policy's tier table."
     )
     action_summary: str = Field(description="One sentence: what Kangaroo is about to do.")
     proposers: list[str] = Field(
@@ -83,11 +79,16 @@ class EvidenceReport(BaseModel):
 class AdjudicatorOutput(BaseModel):
     """The policy decision for the candidate action."""
 
-    verdict: Literal["no_violation", "violation", "needs_review"] = Field(
+    verdict: Literal["no_violation", "violation", "needs_evidence", "needs_review"] = Field(
         description=(
             "violation if carrying out the candidate action exactly as written would break any "
-            "rule; no_violation if it complies; needs_review only if the evidence can't settle it."
+            "rule; no_violation if it complies; needs_evidence if a specific evidence task that "
+            "hasn't run yet would settle it; needs_review only if no more evidence can settle it."
         )
+    )
+    missing_evidence: list[EvidenceTask] = Field(
+        default_factory=list,
+        description="With needs_evidence only: the evidence tasks that would settle the case.",
     )
     broken_rule_ids: list[str] = Field(
         default_factory=list, description="Every broken rule ID, e.g. ['R2.3']. Empty if none."

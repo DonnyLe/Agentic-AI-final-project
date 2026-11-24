@@ -15,6 +15,7 @@ from kangaroo.policy import Policy
 FLAG_POSSIBLE_INJECTION = "possible_injection"
 FLAG_APPROVER_IS_PROPOSER = "approver_is_proposer"
 FLAG_AGENT_ERROR = "agent_error"
+FLAG_EVIDENCE_INCOMPLETE = "evidence_incomplete"
 
 _ENGINEER_APPROVER = "an engineer who is not a proposer"
 
@@ -112,6 +113,9 @@ def check_adjudication(output: AdjudicatorOutput, tier: Tier, policy: Policy) ->
     if output.verdict == "no_violation" and rules:
         problems.append("no_violation can't list broken rules.")
 
+    if output.verdict == "needs_evidence" and not output.missing_evidence:
+        problems.append("needs_evidence must list the missing evidence tasks.")
+
     return problems
 
 
@@ -137,8 +141,12 @@ def _name_key(name: str) -> str:
 
 
 def decide(output: AdjudicatorOutput, tier: Tier, policy: Policy, flags: list[str]) -> Decision:
-    """Turn a checked adjudicator answer into the final decision."""
-    if output.verdict == "needs_review":
+    """Turn a checked adjudicator answer into the final decision.
+
+    A needs_evidence answer only reaches this point when no more evidence can be
+    gathered, so it ends in review like needs_review.
+    """
+    if output.verdict in ("needs_review", "needs_evidence"):
         return needs_review(output.rationale, policy, tier=tier, flags=flags)
 
     rule_ids = sorted(set(output.broken_rule_ids))

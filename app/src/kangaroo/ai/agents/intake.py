@@ -6,7 +6,7 @@ T3/T4 actions stop at the scope gate (`unsupported`) without reaching other agen
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from kangaroo.ai.agents import guards
-from kangaroo.ai.agents.prompts import UNTRUSTED, render_case
+from kangaroo.ai.agents.prompts import UNTRUSTED, render_case, tiers_text
 from kangaroo.ai.agents.state import Node, RunState, Update, add_flag, emit, guarded
 from kangaroo.ai.llm import ModelProvider, structured_call
 from kangaroo.ai.tools.evidence import find_injection
@@ -17,12 +17,15 @@ from kangaroo.models.trace import TraceKind
 from kangaroo.policy import Policy
 
 
-def intake_messages(case: Case) -> list[BaseMessage]:
+def intake_messages(case: Case, policy: Policy) -> list[BaseMessage]:
+    # Only the tier table, not the rules: intake classifies, the adjudicator judges.
     return [
         SystemMessage(
             "You are the intake step of Kangaroo, which checks meeting follow-up actions "
-            "against a team policy. Classify the candidate action and pull out who proposed it. "
-            + UNTRUSTED
+            "against a team policy. Classify the candidate action and pull out who proposed it.\n\n"
+            f"Tiers (policy v{policy.version}):\n{tiers_text(policy)}\n\n"
+            "Classify the candidate action exactly as written, by the kind of action it takes, "
+            "even if the policy may end up redirecting or refusing it. " + UNTRUSTED
         ),
         HumanMessage(render_case(case)),
     ]
@@ -32,7 +35,7 @@ def make_intake(models: ModelProvider, policy: Policy) -> Node:
     @guarded("intake", policy)
     async def intake(state: RunState) -> Update:
         result = await structured_call(
-            models.for_role(Role.INTAKE), IntakeResult, intake_messages(state.case)
+            models.for_role(Role.INTAKE), IntakeResult, intake_messages(state.case, policy)
         )
         transcript = " ".join(s.text for s in state.case.content.segments)
         injected = find_injection(transcript + " " + state.case.content.candidate_action)

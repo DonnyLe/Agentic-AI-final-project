@@ -27,5 +27,19 @@ def render_case(case: Case) -> str:
     return "\n".join(lines)
 
 
+EVIDENCE_TASKS = """- duplicate_search: search open tickets for a matching defect
+- ticket_details: read a specific ticket
+- dependency_check: registry and upstream-issue lookups for a blamed library
+- roster_check: roster, owners and recorded approvals
+- transcript_check: re-read specific transcript segments"""
+
+
 def rules_text(policy: Policy, tier: Tier) -> str:
     return "\n".join(f"{r.id} · {r.name}. {r.text}" for r in policy.rules_for({tier}))
+
+
+def tiers_text(policy: Policy) -> str:
+    """The policy's tier table: what kind of action falls in each tier."""
+    return "\n".join(
+        f"{t.id} · {t.name}. Actions: {t.default_action}." for t in policy.tiers.values()
+    )
